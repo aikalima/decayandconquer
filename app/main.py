@@ -39,15 +39,11 @@ async def predict_price_route(
     bspline_k: int = 3,
     bspline_smooth: float = 10.0,
     bspline_dx: float = 0.1,
-    kernel_smooth: bool = False,
+    kernel_smooth: bool = True,
 ):
     logging.info(f"predict_price received with params: {input_csv_path}, {current_price}, {days_forward}, {risk_free_rate}, {solver}, {bspline_k}, {bspline_smooth}, {bspline_dx}, {kernel_smooth}")
     
-    if not os.path.exists(input_csv_path):
-        input_csv_path = "app/data/dummy_options.csv"
-
     quotes_df = pd.read_csv(input_csv_path)
-
     bspline_params = BSplineParams(k=bspline_k, smooth=bspline_smooth, dx=bspline_dx)
 
     result_df = estimate_pdf_from_calls(
@@ -69,17 +65,25 @@ async def predict_price_orig_route(
     current_price: float = 121.44,
     days_forward: int = 108,
     risk_free_rate: float = 0.03,
+    solver: str = "brent",
+    bspline_k: int = 3,
+    bspline_smooth: float = 10.0,
+    bspline_dx: float = 0.1,
+    kernel_smooth: bool = True,
 ):
-    logging.info(f"predict_price_orig received with params: {input_csv_path}, {current_price}, {days_forward}, {risk_free_rate}")
+    logging.info(f"predict_price_orig received with params: {input_csv_path}, {current_price}, {days_forward}, {risk_free_rate}, {solver}, {bspline_k}, {bspline_smooth}, {bspline_dx}, {kernel_smooth}")
     
-    if not os.path.exists(input_csv_path):
-        input_csv_path = "app/data/dummy_options.csv"
+    quotes_df = pd.read_csv(input_csv_path)
+    bspline_params = BSplineParams(k=bspline_k, smooth=bspline_smooth, dx=bspline_dx)
 
     df = predict_price(
-        input_csv_path=input_csv_path,
-        current_price=current_price,
+        quotes=quotes_df,
+        spot=current_price,
         days_forward=days_forward,
         risk_free_rate=risk_free_rate,
+        solver=solver,
+        bspline=bspline_params,
+        kernel_smooth=kernel_smooth,
     )
     
     print(df.head(20)) # print the first 20 rows

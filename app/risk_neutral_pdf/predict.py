@@ -23,12 +23,6 @@ from .probability_dist_function import breeden_litzenberger_pdf
 from scipy.integrate import simpson
 
 
-def _calculate_mid_price(options_data: pd.DataFrame) -> pd.DataFrame:
-    """Calculate mid-price from bid and ask prices, and filter invalid values."""
-    options_data["mid_price"] = (options_data["bid"] + options_data["ask"]) / 2
-    return options_data[options_data["mid_price"] >= 0].copy()
-
-
 def calculate_cdf(
     pdf_point_arrays: tuple[np.ndarray, np.ndarray],
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -107,8 +101,6 @@ def estimate_pdf_from_calls(
     mkt = MarketParams(r=risk_free_rate, T=T)
 
     q = validate_quotes(quotes)
-    q = _calculate_mid_price(q)
-    q["last_price"] = q["mid_price"]
     q_ext, kmin, kmax = extrapolate_calls(q, spot)
 
     # Solve IV per strike

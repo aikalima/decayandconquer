@@ -2,6 +2,7 @@ from typing import Optional, Literal, Tuple
 import pandas as pd
 import numpy as np
 
+from app.risk_neutral_pdf.smoothing import BSplineParams
 from scipy import interpolate
 from scipy.interpolate import interp1d
 from scipy.optimize import brentq
@@ -39,7 +40,7 @@ def fit_kde(pdf_point_arrays: tuple) -> tuple:
     return (prices, fitted_pdf)
 
 def _extrapolate_call_prices(
-    options_data: pd.DataFrame, current_price: float
+    options_data: pd.DataFrame, spot: float
 ) -> tuple[pd.DataFrame, int, int]:
     """Extrapolate the price of the call options to strike prices outside
     the range of options_data. Extrapolation is done to zero and twice the
@@ -49,7 +50,7 @@ def _extrapolate_call_prices(
     Args:
         options_data: a DataFrame containing options price data with
             cols ['strike', 'last_price']
-        current_price: the current price of the security
+        spot: the current price of the security
 
     Returns:
         the extended options_data DataFrame
@@ -57,7 +58,7 @@ def _extrapolate_call_prices(
     min_strike = int(options_data.strike.min())
     max_strike = int(options_data.strike.max())
     lower_extrapolation = pd.DataFrame(
-        {"strike": p, "last_price": current_price - p} for p in range(0, min_strike)
+        {"strike": p, "last_price": spot - p} for p in range(0, min_strike)
     )
     upper_extrapolation = pd.DataFrame(
         {
@@ -269,7 +270,7 @@ def _bs_iv_newton_method(
 
 def _calculate_IV(
     options_data: pd.DataFrame,
-    current_price: float,
+    spot: float,
     days_forward: int,
     risk_free_rate: float,
     solver_method: Literal["newton", "brent"],
@@ -280,7 +281,7 @@ def _calculate_IV(
     Args:
         options_data (pd.DataFrame): A DataFrame containing option price data with
             columns ['strike', 'last_price'].
-        current_price (float): The current price of the security.
+        spot (float): The current price of the security.
         days_forward (int): The number of days in the future to estimate the
             price probability density at.
         risk_free_rate (float, optional): Annual risk-free rate in nominal terms. Defaults to 0.
@@ -304,7 +305,7 @@ def _calculate_IV(
 
     options_data["iv"] = options_data.apply(
         lambda row: iv_solver(
-            row.last_price, current_price, row.strike, years_forward, r=risk_free_rate
+            row.last_price, spot, row.strike, years_forward, r=risk_free_rate
         ),
         axis=1,
     )
@@ -314,7 +315,7 @@ def _calculate_IV(
 
     return options_data
 
-def _fit_bspline_IV(options_data: pd.DataFrame) -> pd.DataFrame:
+def _fit_bspline_IV(options_data: pd.DataFrame, bspline: BSplineParams) -> pd.DataFrame:
     """Fit a bspline function on the IV observations, in effect denoising the IV.
         From this smoothed IV function, generate (x,y) coordinates
         representing observations of the denoised IV
@@ -322,6 +323,7 @@ def _fit_bspline_IV(options_data: pd.DataFrame) -> pd.DataFrame:
     Args:
         options_data: a DataFrame containing options price data with
             cols ['strike', 'last_price', 'iv']
+        bspline: a BSplineParams object with bspline parameters
 
     Returns:
         a tuple containing x-axis values (index 0) and y-axis values (index 1)
@@ -338,9 +340,9 @@ def _fit_bspline_IV(options_data: pd.DataFrame) -> pd.DataFrame:
         c = the B-spline coefficients
         k = the degree of the spline
     """
-    tck = interpolate.splrep(x, y, s=10, k=3)
+    tck = interpolate.splrep(x, y, s=bspline.smooth, k=bspline.k)
 
-    dx = 0.1  # setting dx = 0.1 for numerical differentiation
+    dx = bspline.dx
     domain = int((max(x) - min(x)) / dx)
 
     # compute (x,y) observations of the denoised IV from the fitted IV function
@@ -350,14 +352,14 @@ def _fit_bspline_IV(options_data: pd.DataFrame) -> pd.DataFrame:
     return (x_new, y_fit)
 
 def _create_pdf_point_arrays(
-    denoised_iv: tuple, current_price: float, days_forward: int, risk_free_rate: float
+    denoised_iv: tuple, spot: float, days_forward: int, risk_free_rate: float
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Create two arrays containing x- and y-axis values representing a calculated
     price PDF
 
     Args:
         denoised_iv: (x,y) observations of the denoised IV
-        current_price: the current price of the security
+        spot: the current price of the security
         days_forward: the number of days in the future to estimate the
             price probability density at
         risk_free_rate: the current annual risk free interest rate, nominal terms
@@ -373,7 +375,7 @@ def _create_pdf_point_arrays(
     # convert IV-space to price-space
     # re-values call options using the BS formula, taking in as inputs S, domain, IV, and time to expiry
     years_forward = days_forward / 365
-    interpolated = _call_value(current_price, x_IV, y_IV, years_forward, risk_free_rate)
+    interpolated = _call_value(spot, x_IV, y_IV, years_forward, risk_free_rate)
     first_derivative_discrete = np.gradient(interpolated, x_IV)
     second_derivative_discrete = np.gradient(first_derivative_discrete, x_IV)
 
@@ -433,17 +435,20 @@ def _crop_pdf(
         r -= 1
     return pdf[0][l : r + 1], pdf[1][l : r + 1]
 
-#calculate_pdf
-def predict_price(input_csv_path: str = "app/data/nvidia_date20250128_strikedate20250516_price12144.csv",
-                  current_price: float = 121.44,
-                  days_forward: int = 100,
-                  risk_free_rate: float = 0.02,
-                  ) -> pd.DataFrame:
+def predict_price(
+    quotes: pd.DataFrame,
+    spot: float,
+    days_forward: int,
+    risk_free_rate: float,
+    solver: str = "brent",
+    bspline: BSplineParams = BSplineParams(),
+    kernel_smooth: bool = False,
+) -> pd.DataFrame:
     
-    fit_kernel_pdf = True 
-    solver_method = "brent"
+    fit_kernel_pdf = kernel_smooth 
+    solver_method = solver
 
-    options_data = pd.read_csv(input_csv_path)
+    options_data = quotes
 
     options_data["strike"] = options_data["strike"].astype(np.float64)
     options_data["last_price"] = options_data["last_price"].astype(np.float64)
@@ -454,7 +459,7 @@ def predict_price(input_csv_path: str = "app/data/nvidia_date20250128_strikedate
     print("options_data.head(20):--------------------------------")
     print(options_data.head(20))
     options_data, min_strike, max_strike = _extrapolate_call_prices(
-        options_data, current_price
+        options_data, spot
     )
 
     print("options_data.head(20) after extrapolate_call_prices:")
@@ -466,21 +471,21 @@ def predict_price(input_csv_path: str = "app/data/nvidia_date20250128_strikedate
     print(options_data.head(20))
     print("+++ ------------------------------------------------ +++")
     options_data = _calculate_IV(
-        options_data, current_price, days_forward, risk_free_rate, solver_method
+        options_data, spot, days_forward, risk_free_rate, solver_method
     )
 
     print("########################################################")
     print("options_data.head(20) after calculate_IV:")
     print(options_data.head(20))
     print("########################################################")
-    denoised_iv = _fit_bspline_IV(options_data)
+    denoised_iv = _fit_bspline_IV(options_data, bspline)
     a, b = denoised_iv
     print(f"Array A: shape={a.shape}, min={a.min():.3f}, max={a.max():.3f}")
     print(f"Array B: shape={b.shape}, min={b.min():.3f}, max={b.max():.3f}")
     print("+++ ------------------------------------------------ +++")
 
     pdf = _create_pdf_point_arrays(
-        denoised_iv, current_price, days_forward, risk_free_rate
+        denoised_iv, spot, days_forward, risk_free_rate
     )
 
     print("pdf:")
