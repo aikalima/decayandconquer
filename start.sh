@@ -1,7 +1,6 @@
 #!/bin/bash
 
 VENV_DIR="venv"
-SERVER_PORT=${SERVER_PORT:-9000}
 
 # Check if the virtual environment directory exists
 if [ ! -d "$VENV_DIR" ]; then
@@ -23,6 +22,6 @@ else
 fi
 
 # Start the server
-uvicorn app.main:app --host 0.0.0.0 --port $SERVER_PORT > server.log 2>&1 &
+uvicorn app.main:app --host 0.0.0.0 --port 8000 > server.log 2>&1 &
 echo $! > server.pid
 echo "Server started with PID $(cat server.pid)"
