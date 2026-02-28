@@ -6,8 +6,8 @@ import pandas as pd
 import os
 
 from app.modules.health import get_ping_response
-from app.predicion_pipline.predict import predict_price
-from app.predicion_pipline.smoothing import BSplineParams
+from app.prediction_pipeline.predict import predict_price
+from app.prediction_pipeline.step3_smooth_iv import BSplineParams
 
 logging.basicConfig(filename='server.log', level=logging.INFO)
 
@@ -28,7 +28,7 @@ async def ping():
 
 @app.get("/predict")
 async def predict_price_route(
-    input_csv_path: str = "app/data/nvidia_date20250128_strikedate20250516_price12144.csv",
+    ticker: str = "SPY",
     spot: float = 121.44,
     days_forward: int = 100,
     risk_free_rate: float = 0.03,
@@ -38,9 +38,11 @@ async def predict_price_route(
     bspline_dx: float = 0.1,
     kernel_smooth: bool = True,
 ):
-    logging.info(f"predict_price received with params: {input_csv_path}, {spot}, {days_forward}, {risk_free_rate}, {solver}, {bspline_k}, {bspline_smooth}, {bspline_dx}, {kernel_smooth}")
+    logging.info(f"predict_price received with params: {ticker}, {spot}, {days_forward}, {risk_free_rate}, {solver}, {bspline_k}, {bspline_smooth}, {bspline_dx}, {kernel_smooth}")
     
-    if not os.path.exists(input_csv_path):
+    ticker = ticker.lower()
+    
+    if not os.path.exists(f"app/data/{ticker}.csv"):
         input_csv_path = "app/data/dummy_options.csv"
 
     quotes_df = pd.read_csv(input_csv_path)
