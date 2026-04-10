@@ -66,9 +66,13 @@ export default function PdfChart({ data, spot, realized, predicted, ciLevel = 90
 
   return (
     <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16, minHeight: 300 }}>
-      <h3 style={{ margin: "0 0 12px", fontSize: 15, color: "#ccc" }}>
-        Probability Density
+      <h3 style={{ margin: "0 0 4px", fontSize: 15, color: "#ccc" }}>
+        Predicted Range
       </h3>
+      <p style={{ margin: "0 0 12px", fontSize: 11, color: "#666" }}>
+        The market-implied range of likely prices. The peak is the most probable outcome;
+        the shaded area covers the confidence interval.
+      </p>
       <Line
         data={{
           labels: prices.map((p) => p.toFixed(1)),
@@ -126,7 +130,7 @@ export default function PdfChart({ data, spot, realized, predicted, ciLevel = 90
               grid: { color: "#222" },
             },
             y: {
-              title: { display: true, text: "Probability Density (per $)", color: "#888" },
+              title: { display: true, text: "Likelihood", color: "#888" },
               ticks: { color: "#666" },
               grid: { color: "#222" },
             },

@@ -13,7 +13,7 @@ to 1.
 from __future__ import annotations
 import numpy as np
 from scipy.integrate import cumulative_trapezoid
-from .black_scholes import call_value
+from .black_scholes import call_value, call_delta, call_gamma, call_theta, call_vega
 
 
 def extract_pdf(
@@ -65,6 +65,33 @@ def compute_cdf(
     cdf = cumulative_trapezoid(pdf, strikes, initial=0.0)
     # Clamp to [0, 1] to absorb any floating-point drift
     return np.clip(cdf, 0.0, 1.0)
+
+
+def compute_greeks(
+    denoised_iv: tuple[np.ndarray, np.ndarray],
+    spot: float,
+    days_forward: int,
+    risk_free_rate: float,
+) -> dict[str, list[float]]:
+    """Compute per-strike Greeks from the smoothed IV curve.
+
+    Returns dict with keys: strikes, delta, gamma, theta ($/day), vega ($/1% IV).
+    """
+    strikes, iv_smooth = denoised_iv
+    years = days_forward / 365
+
+    delta = call_delta(spot, strikes, iv_smooth, years, risk_free_rate)
+    gamma = call_gamma(spot, strikes, iv_smooth, years, risk_free_rate)
+    theta = call_theta(spot, strikes, iv_smooth, years, risk_free_rate) / 365  # $/day
+    vega = call_vega(spot, strikes, iv_smooth, years, risk_free_rate) / 100    # $/1% IV
+
+    return {
+        "strikes": strikes.tolist(),
+        "delta": delta.tolist(),
+        "gamma": gamma.tolist(),
+        "theta": theta.tolist(),
+        "vega": vega.tolist(),
+    }
 
 
 def crop_to_range(

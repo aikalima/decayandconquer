@@ -55,6 +55,7 @@ def _build_response(result: PipelineResult, meta: dict) -> dict:
             "smooth_iv": result.iv_smooth_values,
             "n_strikes": result.n_strikes_used,
         },
+        "greeks": result.greeks,
     }
 
 

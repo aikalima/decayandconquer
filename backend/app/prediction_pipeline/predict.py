@@ -19,7 +19,7 @@ import pandas as pd
 from .step1_prep import validate_quotes
 from .step2_implied_vol import calculate_IV, calculate_IV_averaged
 from .step3_smooth_iv import fit_bspline_IV, BSplineParams
-from .step4_pdf import extract_pdf, compute_cdf
+from .step4_pdf import extract_pdf, compute_cdf, compute_greeks
 from .step5_smooth_pdf import fit_kde
 
 
@@ -32,6 +32,7 @@ class PipelineResult:
     iv_smooth_strikes: list[float]      # dense B-spline smoothed IV
     iv_smooth_values: list[float]
     n_strikes_used: int                 # how many strikes had valid IV
+    greeks: dict[str, list[float]]      # per-strike delta, gamma, theta, vega
 
 
 def _iv_to_result(
@@ -57,6 +58,9 @@ def _iv_to_result(
     # B-spline smoothing
     smooth_strikes, smooth_iv = fit_bspline_IV(iv_df, bspline)
 
+    # Greeks
+    greeks = compute_greeks((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate)
+
     # Breeden-Litzenberger PDF
     strikes, pdf = extract_pdf((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate)
 
@@ -74,6 +78,7 @@ def _iv_to_result(
         iv_smooth_strikes=smooth_strikes.tolist(),
         iv_smooth_values=smooth_iv.tolist(),
         n_strikes_used=n_strikes,
+        greeks=greeks,
     )
 
 
@@ -162,6 +167,8 @@ def predict_price_with_progress(
     yield ("Smoothing IV curve", 70)
     smooth_strikes, smooth_iv = fit_bspline_IV(df, bspline)
 
+    greeks = compute_greeks((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate)
+
     yield ("Extracting price distribution", 80)
     strikes, pdf = extract_pdf((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate)
 
@@ -179,6 +186,7 @@ def predict_price_with_progress(
         iv_smooth_strikes=smooth_strikes.tolist(),
         iv_smooth_values=smooth_iv.tolist(),
         n_strikes_used=len(iv_raw_strikes),
+        greeks=greeks,
     )
 
 
@@ -219,6 +227,8 @@ def predict_price_averaged_with_progress(
     yield ("Smoothing IV curve", 70)
     smooth_strikes, smooth_iv = fit_bspline_IV(iv_df, bspline)
 
+    greeks = compute_greeks((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate)
+
     yield ("Extracting price distribution", 80)
     strikes, pdf = extract_pdf((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate)
 
@@ -236,4 +246,5 @@ def predict_price_averaged_with_progress(
         iv_smooth_strikes=smooth_strikes.tolist(),
         iv_smooth_values=smooth_iv.tolist(),
         n_strikes_used=len(iv_raw_strikes),
+        greeks=greeks,
     )

@@ -1,14 +1,15 @@
-import { useState, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import Tutorial, { startTutorial } from "../components/Tutorial";
-import PredictionForm from "../components/PredictionForm";
+import PredictionForm, { DEFAULTS } from "../components/PredictionForm";
 import PdfChart from "../components/PdfChart";
 import CdfChart from "../components/CdfChart";
 import IvSmileChart from "../components/IvSmileChart";
+import GreeksChart from "../components/GreeksChart";
 import RiskGauge from "../components/RiskGauge";
 import SummaryStats, { getAccuracyBadge, interpCdfAt } from "../components/SummaryStats";
 import ProgressBar from "../components/ProgressBar";
 import { fetchPredictionStream } from "../api/client";
-import type { PredictionParams, PredictionData, PredictionMeta, IvSmile } from "../types/prediction";
+import type { PredictionParams, PredictionData, PredictionMeta, IvSmile, Greeks } from "../types/prediction";
 import { parsePredictionResponse } from "../types/prediction";
 
 function computeMedian(data: PredictionData): number {
@@ -26,6 +27,7 @@ export default function BacktestPage() {
   const [data, setData] = useState<PredictionData | null>(null);
   const [meta, setMeta] = useState<PredictionMeta | null>(null);
   const [ivSmile, setIvSmile] = useState<IvSmile | null>(null);
+  const [greeks, setGreeks] = useState<Greeks | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
@@ -39,6 +41,7 @@ export default function BacktestPage() {
     setData(null);
     setMeta(null);
     setIvSmile(null);
+    setGreeks(null);
     setProgress(0);
     setStage("Starting...");
 
@@ -50,15 +53,33 @@ export default function BacktestPage() {
       setData(parsePredictionResponse(raw));
       setMeta(raw.meta);
       setIvSmile(raw.iv_smile);
+      setGreeks(raw.greeks);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       setData(null);
       setMeta(null);
       setIvSmile(null);
+      setGreeks(null);
     } finally {
       setLoading(false);
     }
   };
+
+  // Auto-run with defaults on first load
+  const didAutoRun = useRef(false);
+  useEffect(() => {
+    if (didAutoRun.current) return;
+    didAutoRun.current = true;
+    handleSubmit({
+      ticker: "SPY",
+      obs_date_from: DEFAULTS.obsFrom,
+      obs_date_to: DEFAULTS.obsTo,
+      target_date: DEFAULTS.target,
+      risk_free_rate: 0.04,
+      solver: "brent",
+      kernel_smooth: false,
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const median = data ? computeMedian(data) : 0;
   const isPrediction = meta ? !meta.realized_price : false;
@@ -121,8 +142,6 @@ export default function BacktestPage() {
               : null;
             const badge = cdfPct != null ? getAccuracyBadge(cdfPct) : null;
             const hasRealized = meta.realized_price != null && badge && cdfPct != null;
-            const peakPrice = data.prices[data.pdf.indexOf(Math.max(...data.pdf))];
-
             return (
               <div style={{ display: "grid", gridTemplateColumns: hasRealized ? "repeat(auto-fit, minmax(250px, 1fr))" : "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
                 {hasRealized ? (
@@ -142,7 +161,7 @@ export default function BacktestPage() {
                     }}>
                       <strong style={{ color: "#2ecc71", fontSize: 14 }}>Backtest Result</strong>
                       <div style={{ marginTop: 6, fontSize: 12 }}>
-                        Predicted <strong style={{ color: "#ccc" }}>${peakPrice.toFixed(0)}</strong>,
+                        Predicted <strong style={{ color: "#ccc" }}>${median.toFixed(0)}</strong>,
                         actual was <strong style={{ color: "#2ecc71" }}>${meta.realized_price!.toFixed(2)}</strong>
                       </div>
                     </div>
@@ -193,8 +212,8 @@ export default function BacktestPage() {
                   }}>
                     <strong style={{ color: "#2ecc71", fontSize: 14 }}>Prediction</strong>
                     <div style={{ marginTop: 6, fontSize: 12 }}>
-                      The options market predicts {meta.ticker} will most likely be
-                      around <strong style={{ color: "#ccc" }}>${median.toFixed(0)}</strong> by {meta.target_date}.
+                      Given option prices from {meta.obs_date_from} to {meta.obs_date_to}, the
+                      market predicts {meta.ticker} around <strong style={{ color: "#ccc" }}>${median.toFixed(0)}</strong> by {meta.target_date}.
                     </div>
                   </div>
                 )}
@@ -232,9 +251,14 @@ export default function BacktestPage() {
             <CdfChart key={`cdf-${meta.obs_date}-${meta.target_date}-${ciLevel}`} data={data} spot={meta.spot} realized={isPrediction ? undefined : meta.realized_price} predicted={median} ciLevel={ciLevel} />
           </div>
 
-          {ivSmile && (
-            <IvSmileChart ivSmile={ivSmile} spot={meta.spot} />
-          )}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 20 }}>
+            {ivSmile && (
+              <IvSmileChart ivSmile={ivSmile} spot={meta.spot} />
+            )}
+            {greeks && (
+              <GreeksChart greeks={greeks} spot={meta.spot} />
+            )}
+          </div>
         </>
       )}
       {showExplainer && <ExplainerModal onClose={() => setShowExplainer(false)} />}

@@ -36,6 +36,7 @@ function computeDefaults() {
 }
 
 const DEFAULTS = computeDefaults();
+export { DEFAULTS };
 
 export default function PredictionForm({ onSubmit, loading }: Props) {
   const [ticker, setTicker] = useState("SPY");

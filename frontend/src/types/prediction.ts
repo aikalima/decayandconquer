@@ -20,6 +20,14 @@ export interface IvSmile {
   n_strikes: number;
 }
 
+export interface Greeks {
+  strikes: number[];
+  delta: number[];
+  gamma: number[];
+  theta: number[];
+  vega: number[];
+}
+
 export interface PredictionResponse {
   data: {
     Price: Record<string, number>;
@@ -28,6 +36,7 @@ export interface PredictionResponse {
   };
   meta: PredictionMeta;
   iv_smile: IvSmile;
+  greeks: Greeks;
 }
 
 export interface PredictionData {

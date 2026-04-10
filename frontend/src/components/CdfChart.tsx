@@ -57,9 +57,13 @@ export default function CdfChart({ data, spot, realized, predicted, ciLevel = 90
 
   return (
     <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16, minHeight: 300 }}>
-      <h3 style={{ margin: "0 0 12px", fontSize: 15, color: "#ccc" }}>
-        Cumulative Distribution
+      <h3 style={{ margin: "0 0 4px", fontSize: 15, color: "#ccc" }}>
+        Price Probability
       </h3>
+      <p style={{ margin: "0 0 12px", fontSize: 11, color: "#666" }}>
+        The probability of the price ending up below each level. Read off any price on the
+        x-axis to see the chance it stays under that value.
+      </p>
       <Line
         data={{
           labels: prices.map((p) => p.toFixed(1)),

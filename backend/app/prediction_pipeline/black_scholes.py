@@ -26,3 +26,28 @@ def call_vega(S, K, sigma, t, r):
     with np.errstate(divide="ignore"):
         d1 = (np.log(S / K) + (r + sigma**2 / 2) * t) / (sigma * np.sqrt(t))
     return S * norm.pdf(d1) * np.sqrt(t)
+
+
+def call_delta(S, K, sigma, t, r):
+    """Delta: dC/dS — probability call finishes ITM (risk-neutral)."""
+    with np.errstate(divide="ignore"):
+        d1 = (np.log(S / K) + (r + sigma**2 / 2) * t) / (sigma * np.sqrt(t))
+    return norm.cdf(d1)
+
+
+def call_gamma(S, K, sigma, t, r):
+    """Gamma: d²C/dS² — rate of change of delta."""
+    with np.errstate(divide="ignore"):
+        d1 = (np.log(S / K) + (r + sigma**2 / 2) * t) / (sigma * np.sqrt(t))
+    return norm.pdf(d1) / (S * sigma * np.sqrt(t))
+
+
+def call_theta(S, K, sigma, t, r):
+    """Theta: dC/dt — annualized time decay (negative = value lost)."""
+    with np.errstate(divide="ignore"):
+        d1 = (np.log(S / K) + (r + sigma**2 / 2) * t) / (sigma * np.sqrt(t))
+        d2 = d1 - sigma * np.sqrt(t)
+    return (
+        -(S * norm.pdf(d1) * sigma) / (2 * np.sqrt(t))
+        - r * K * np.exp(-r * t) * norm.cdf(d2)
+    )

@@ -8,7 +8,7 @@ import {
   Legend,
 } from "chart.js";
 import { Line } from "react-chartjs-2";
-import type { IvSmile } from "../types/prediction";
+import type { Greeks } from "../types/prediction";
 
 ChartJS.register(
   LineElement,
@@ -20,7 +20,7 @@ ChartJS.register(
 );
 
 interface Props {
-  ivSmile: IvSmile;
+  greeks: Greeks;
   spot: number;
 }
 
@@ -31,49 +31,83 @@ function findIdx(prices: number[], target: number): number {
   );
 }
 
-export default function IvSmileChart({ ivSmile, spot }: Props) {
-  // Downsample smooth curve
-  const step = Math.max(1, Math.floor(ivSmile.smooth_strikes.length / 500));
-  const smoothStrikes = ivSmile.smooth_strikes.filter((_, i) => i % step === 0);
-  const smoothIv = ivSmile.smooth_iv.filter((_, i) => i % step === 0);
+export default function GreeksChart({ greeks, spot }: Props) {
+  // Downsample to ~500 points
+  const step = Math.max(1, Math.floor(greeks.strikes.length / 500));
+  const strikes = greeks.strikes.filter((_, i) => i % step === 0);
+  const delta = greeks.delta.filter((_, i) => i % step === 0);
+  const gamma = greeks.gamma.filter((_, i) => i % step === 0);
+  const theta = greeks.theta.filter((_, i) => i % step === 0);
+  const vega = greeks.vega.filter((_, i) => i % step === 0);
 
   return (
     <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16, minHeight: 300 }}>
       <h3 style={{ margin: "0 0 4px", fontSize: 15, color: "#ccc" }}>
-        Implied Volatility
+        Option Greeks
       </h3>
       <p style={{ margin: "0 0 12px", fontSize: 11, color: "#666" }}>
-        Market-implied volatility at each strike. The shape reveals risk perception:
-        a left skew (higher IV for low strikes) indicates crash fear; a flat smile suggests
-        symmetric expectations. {ivSmile.n_strikes} strikes with valid IV.
+        Sensitivity of option prices to underlying factors across strikes.
+        Delta measures directional exposure, gamma its rate of change,
+        theta the daily time decay, and vega the sensitivity to implied volatility.
       </p>
       <Line
         data={{
-          labels: smoothStrikes.map((s) => s.toFixed(1)),
+          labels: strikes.map((s) => s.toFixed(1)),
           datasets: [
             {
-              label: "Implied Volatility",
-              data: smoothIv.map((v) => v * 100),
-              borderColor: "#a882ff",
+              label: "Delta",
+              data: delta,
+              borderColor: "#3498db",
               pointRadius: 0,
               borderWidth: 2,
               tension: 0.3,
+              yAxisID: "y",
+            },
+            {
+              label: "Gamma",
+              data: gamma,
+              borderColor: "#2ecc71",
+              pointRadius: 0,
+              borderWidth: 2,
+              tension: 0.3,
+              yAxisID: "y1",
+            },
+            {
+              label: "Theta ($/day)",
+              data: theta,
+              borderColor: "#e74c3c",
+              pointRadius: 0,
+              borderWidth: 2,
+              tension: 0.3,
+              yAxisID: "y1",
+            },
+            {
+              label: "Vega ($/1% IV)",
+              data: vega,
+              borderColor: "#f39c12",
+              pointRadius: 0,
+              borderWidth: 2,
+              tension: 0.3,
+              yAxisID: "y1",
             },
           ],
         }}
         options={{
           responsive: true,
+          interaction: {
+            mode: "index",
+            intersect: false,
+          },
           plugins: {
             legend: {
               display: true,
               labels: { color: "#888", font: { size: 10 } },
               position: "top",
-              onClick: () => {},
             },
             tooltip: {
               callbacks: {
                 title: (items) => `Strike: $${items[0].label}`,
-                label: (item) => `IV: ${Number(item.raw).toFixed(1)}%`,
+                label: (item) => `${item.dataset.label}: ${Number(item.raw).toFixed(4)}`,
               },
             },
           },
@@ -85,12 +119,20 @@ export default function IvSmileChart({ ivSmile, spot }: Props) {
               grid: { color: "#222" },
             },
             y: {
-              title: { display: true, text: "Implied Volatility (%)", color: "#888" },
-              ticks: {
-                color: "#666",
-                callback: (v) => `${Number(v).toFixed(0)}%`,
-              },
+              type: "linear",
+              position: "left",
+              title: { display: true, text: "Delta", color: "#3498db" },
+              ticks: { color: "#666" },
               grid: { color: "#222" },
+              min: 0,
+              max: 1,
+            },
+            y1: {
+              type: "linear",
+              position: "right",
+              title: { display: true, text: "Gamma / Theta / Vega", color: "#888" },
+              ticks: { color: "#666" },
+              grid: { drawOnChartArea: false },
             },
           },
           animation: {
@@ -100,8 +142,7 @@ export default function IvSmileChart({ ivSmile, spot }: Props) {
               const yTop = chart.chartArea.top;
               const yBottom = chart.chartArea.bottom;
 
-              // ATM line at spot
-              const spotX = xScale.getPixelForValue(findIdx(smoothStrikes, spot));
+              const spotX = xScale.getPixelForValue(findIdx(strikes, spot));
               ctx.save();
               ctx.strokeStyle = "#e74c3c";
               ctx.lineWidth = 1.5;
