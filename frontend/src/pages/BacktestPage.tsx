@@ -225,8 +225,8 @@ export default function BacktestPage() {
           })()}
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span style={{ fontSize: 12, color: "#888" }}>Confidence Interval:</span>
-            {([50, 90] as const).map((level) => (
+            <span style={{ fontSize: 12, color: "#888" }}>Chance price lands in shaded range:</span>
+            {([{ level: 50 as const, label: "Coin flip (50%)" }, { level: 90 as const, label: "Near certain (90%)" }]).map(({ level, label }) => (
               <button
                 key={level}
                 onClick={() => setCiLevel(level)}
@@ -241,7 +241,7 @@ export default function BacktestPage() {
                   fontWeight: 600,
                 }}
               >
-                {level}%
+                {label}
               </button>
             ))}
           </div>
