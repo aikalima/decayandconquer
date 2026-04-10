@@ -1,3 +1,4 @@
+import React from "react";
 import {
   Chart as ChartJS,
   LineElement,
@@ -27,6 +28,7 @@ interface Props {
   realized?: number;
   predicted?: number;
   ciLevel?: 50 | 90;
+  onCiLevelChange?: (level: 50 | 90) => void;
 }
 
 function findIdx(prices: number[], target: number): number {
@@ -46,7 +48,7 @@ function interpCdf(target: number, cdf: number[], prices: number[]): number {
   return prices[prices.length - 1];
 }
 
-export default function PdfChart({ data, spot, realized, predicted, ciLevel = 90 }: Props) {
+export default React.memo(function PdfChart({ data, spot, realized, predicted, ciLevel = 90, onCiLevelChange }: Props) {
   const step = Math.max(1, Math.floor(data.prices.length / 500));
   const prices = data.prices.filter((_, i) => i % step === 0);
   const pdf = data.pdf.filter((_, i) => i % step === 0);
@@ -66,9 +68,34 @@ export default function PdfChart({ data, spot, realized, predicted, ciLevel = 90
 
   return (
     <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16, minHeight: 300 }}>
-      <h3 style={{ margin: "0 0 4px", fontSize: 15, color: "#ccc" }}>
-        Predicted Range
-      </h3>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <h3 style={{ margin: 0, fontSize: 15, color: "#ccc" }}>
+          Predicted Range
+        </h3>
+        {onCiLevelChange && (
+          <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
+            <span style={{ fontSize: 10, color: "#666", marginRight: 2 }}>Chance price lands in shaded range:</span>
+            {([{ level: 50 as const, label: "Coin flip (50%)" }, { level: 90 as const, label: "Near certain (90%)" }]).map(({ level, label }) => (
+              <button
+                key={level}
+                onClick={() => onCiLevelChange(level)}
+                style={{
+                  padding: "3px 8px",
+                  borderRadius: 4,
+                  border: `1px solid ${ciLevel === level ? "#6c63ff" : "#333"}`,
+                  background: ciLevel === level ? "#6c63ff" : "transparent",
+                  color: ciLevel === level ? "#fff" : "#888",
+                  cursor: "pointer",
+                  fontSize: 10,
+                  fontWeight: 600,
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <p style={{ margin: "0 0 12px", fontSize: 11, color: "#666" }}>
         The market-implied range of likely prices. The peak is the most probable outcome;
         the shaded area covers the confidence interval.
@@ -175,32 +202,32 @@ export default function PdfChart({ data, spot, realized, predicted, ciLevel = 90
               ctx.font = "11px sans-serif";
               ctx.fillText(`Spot $${spot.toFixed(0)}`, spotX + 4, yTop + 14);
 
-              // Predicted median line (yellow dashed)
+              // Predicted median line (green dashed)
               if (predicted != null) {
                 const predX = xScale.getPixelForValue(findIdx(prices, predicted));
-                ctx.strokeStyle = "#f1c40f";
+                ctx.strokeStyle = "#2ecc71";
                 ctx.lineWidth = 1.5;
                 ctx.setLineDash([4, 3]);
                 ctx.beginPath();
                 ctx.moveTo(predX, yTop);
                 ctx.lineTo(predX, yBottom);
                 ctx.stroke();
-                ctx.fillStyle = "#f1c40f";
+                ctx.fillStyle = "#2ecc71";
                 ctx.setLineDash([]);
                 ctx.fillText(`Predicted $${predicted.toFixed(0)}`, predX + 4, yTop + 42);
               }
 
-              // Realized price line (solid green)
+              // Realized price line (cyan solid)
               if (realized != null) {
                 const realX = xScale.getPixelForValue(findIdx(prices, realized));
-                ctx.strokeStyle = "#2ecc71";
+                ctx.strokeStyle = "#00d2ff";
                 ctx.lineWidth = 2;
                 ctx.setLineDash([]);
                 ctx.beginPath();
                 ctx.moveTo(realX, yTop);
                 ctx.lineTo(realX, yBottom);
                 ctx.stroke();
-                ctx.fillStyle = "#2ecc71";
+                ctx.fillStyle = "#00d2ff";
                 ctx.fillText(`Actual $${realized.toFixed(0)}`, realX + 4, yTop + 28);
               }
 
@@ -211,4 +238,4 @@ export default function PdfChart({ data, spot, realized, predicted, ciLevel = 90
       />
     </div>
   );
-}
+});

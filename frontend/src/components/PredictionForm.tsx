@@ -5,6 +5,9 @@ import TimelineSlider from "./TimelineSlider";
 interface Props {
   onSubmit: (params: PredictionParams) => void;
   loading: boolean;
+  events?: { date: string; category: string }[];
+  hoveredEventIndex?: number | null;
+  onEventHover?: (index: number | null) => void;
 }
 
 function isTargetInFuture(targetDate: string): boolean {
@@ -38,7 +41,7 @@ function computeDefaults() {
 const DEFAULTS = computeDefaults();
 export { DEFAULTS };
 
-export default function PredictionForm({ onSubmit, loading }: Props) {
+export default function PredictionForm({ onSubmit, loading, events, hoveredEventIndex, onEventHover }: Props) {
   const [ticker, setTicker] = useState("SPY");
   const [obsFrom, setObsFrom] = useState(DEFAULTS.obsFrom);
   const [obsTo, setObsTo] = useState(DEFAULTS.obsTo);
@@ -121,6 +124,9 @@ export default function PredictionForm({ onSubmit, loading }: Props) {
         initialTarget={targetDate || undefined}
         onObsRangeChange={(from, to) => { setObsFrom(from); setObsTo(to); }}
         onTargetDateChange={(d) => setTargetDate(d)}
+        events={events}
+        hoveredEventIndex={hoveredEventIndex}
+        onEventHover={onEventHover}
       />
 
       {/* Bottom row: Settings toggle + Run button */}

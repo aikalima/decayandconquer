@@ -1,3 +1,4 @@
+import React from "react";
 import {
   Chart as ChartJS,
   LineElement,
@@ -31,7 +32,7 @@ function findIdx(prices: number[], target: number): number {
   );
 }
 
-export default function IvSmileChart({ ivSmile, spot }: Props) {
+export default React.memo(function IvSmileChart({ ivSmile, spot }: Props) {
   // Downsample smooth curve
   const step = Math.max(1, Math.floor(ivSmile.smooth_strikes.length / 500));
   const smoothStrikes = ivSmile.smooth_strikes.filter((_, i) => i % step === 0);
@@ -120,4 +121,4 @@ export default function IvSmileChart({ ivSmile, spot }: Props) {
       />
     </div>
   );
-}
+});

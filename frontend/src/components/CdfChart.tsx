@@ -1,3 +1,4 @@
+import React from "react";
 import {
   Chart as ChartJS,
   LineElement,
@@ -46,7 +47,7 @@ function interpCdf(target: number, cdf: number[], prices: number[]): number {
   return prices[prices.length - 1];
 }
 
-export default function CdfChart({ data, spot, realized, predicted, ciLevel = 90 }: Props) {
+export default React.memo(function CdfChart({ data, spot, realized, predicted, ciLevel = 90 }: Props) {
   const step = Math.max(1, Math.floor(data.prices.length / 500));
   const prices = data.prices.filter((_, i) => i % step === 0);
   const cdf = data.cdf.filter((_, i) => i % step === 0);
@@ -169,14 +170,14 @@ export default function CdfChart({ data, spot, realized, predicted, ciLevel = 90
               ctx.font = "11px sans-serif";
               ctx.fillText(`Spot $${spot.toFixed(0)}`, spotX + 4, yTop + 14);
 
-              // Predicted median (yellow dashed)
+              // Predicted median (green dashed)
               if (predicted != null) {
                 const predIdx = findIdx(prices, predicted);
                 const predX = xScale.getPixelForValue(predIdx);
                 const predCdf = cdf[predIdx] ?? 0.5;
                 const predY = yScale.getPixelForValue(predCdf);
 
-                ctx.strokeStyle = "#f1c40f";
+                ctx.strokeStyle = "#2ecc71";
                 ctx.lineWidth = 1.5;
                 ctx.setLineDash([4, 3]);
                 ctx.beginPath();
@@ -190,7 +191,7 @@ export default function CdfChart({ data, spot, realized, predicted, ciLevel = 90
                 ctx.lineTo(predX, predY);
                 ctx.stroke();
 
-                ctx.fillStyle = "#f1c40f";
+                ctx.fillStyle = "#2ecc71";
                 ctx.setLineDash([]);
                 ctx.fillText(
                   `Predicted $${predicted.toFixed(0)} (${(predCdf * 100).toFixed(0)}%)`,
@@ -199,14 +200,14 @@ export default function CdfChart({ data, spot, realized, predicted, ciLevel = 90
                 );
               }
 
-              // Realized price (solid green)
+              // Realized price (cyan solid)
               if (realized != null) {
                 const realIdx = findIdx(prices, realized);
                 const realX = xScale.getPixelForValue(realIdx);
                 const cdfVal = cdf[realIdx] ?? 0;
                 const realY = yScale.getPixelForValue(cdfVal);
 
-                ctx.strokeStyle = "#2ecc71";
+                ctx.strokeStyle = "#00d2ff";
                 ctx.lineWidth = 2;
                 ctx.setLineDash([]);
                 ctx.beginPath();
@@ -221,7 +222,7 @@ export default function CdfChart({ data, spot, realized, predicted, ciLevel = 90
                 ctx.lineTo(realX, realY);
                 ctx.stroke();
 
-                ctx.fillStyle = "#2ecc71";
+                ctx.fillStyle = "#00d2ff";
                 ctx.setLineDash([]);
                 ctx.fillText(
                   `Actual $${realized.toFixed(0)} (${(cdfVal * 100).toFixed(0)}%)`,
@@ -237,4 +238,4 @@ export default function CdfChart({ data, spot, realized, predicted, ciLevel = 90
       />
     </div>
   );
-}
+});

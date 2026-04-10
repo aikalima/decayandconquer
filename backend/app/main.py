@@ -24,6 +24,7 @@ from app.data.fetcher import (
     get_client,
     find_nearest_expiry_friday,
 )
+from app.news import fetch_market_context
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -409,3 +410,21 @@ async def predict_price_stream(
             yield _sse({"error": str(e)})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.get("/market-context")
+async def market_context(
+    ticker: str = "SPY",
+    obs_from: str = "2025-11-01",
+    obs_to: str = "2026-03-01",
+):
+    """Fetch AI-generated market context for the observation period."""
+    try:
+        events = fetch_market_context(ticker, obs_from, obs_to)
+        return {
+            "events": events,
+            "disclaimer": "AI-generated summary based on the model's training data. Verify independently.",
+        }
+    except Exception as e:
+        logger.error("market-context failed: %s", e)
+        return {"events": [], "disclaimer": "Failed to fetch market context."}
