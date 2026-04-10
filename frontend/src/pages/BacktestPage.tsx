@@ -5,10 +5,11 @@ import PdfChart from "../components/PdfChart";
 import CdfChart from "../components/CdfChart";
 import IvSmileChart from "../components/IvSmileChart";
 import GreeksChart from "../components/GreeksChart";
-import RiskGauge from "../components/RiskGauge";
-import SummaryStats, { getAccuracyBadge, interpCdfAt } from "../components/SummaryStats";
+import MarketContext from "../components/MarketContext";
+import SummaryStats from "../components/SummaryStats";
 import ProgressBar from "../components/ProgressBar";
-import { fetchPredictionStream } from "../api/client";
+import { fetchPredictionStream, fetchMarketContext } from "../api/client";
+import type { MarketEvent } from "../api/client";
 import type { PredictionParams, PredictionData, PredictionMeta, IvSmile, Greeks } from "../types/prediction";
 import { parsePredictionResponse } from "../types/prediction";
 
@@ -34,6 +35,10 @@ export default function BacktestPage() {
   const [stage, setStage] = useState("");
   const [ciLevel, setCiLevel] = useState<50 | 90>(90);
   const [showExplainer, setShowExplainer] = useState(false);
+  const [marketEvents, setMarketEvents] = useState<MarketEvent[]>([]);
+  const [marketDisclaimer, setMarketDisclaimer] = useState("");
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [hoveredEventIndex, setHoveredEventIndex] = useState<number | null>(null);
 
   const handleSubmit = async (p: PredictionParams) => {
     setLoading(true);
@@ -44,6 +49,20 @@ export default function BacktestPage() {
     setGreeks(null);
     setProgress(0);
     setStage("Starting...");
+
+    // Fetch market context in parallel (non-blocking)
+    setMarketLoading(true);
+    setMarketEvents([]);
+    fetchMarketContext(p.ticker, p.obs_date_from, p.obs_date_to)
+      .then((ctx) => {
+        setMarketEvents(ctx.events);
+        setMarketDisclaimer(ctx.disclaimer);
+      })
+      .catch(() => {
+        setMarketEvents([]);
+        setMarketDisclaimer("Failed to fetch market context.");
+      })
+      .finally(() => setMarketLoading(false));
 
     try {
       const raw = await fetchPredictionStream(p, (event) => {
@@ -112,7 +131,13 @@ export default function BacktestPage() {
         </p>
       </div>
 
-      <PredictionForm onSubmit={handleSubmit} loading={loading} />
+      <PredictionForm
+        onSubmit={handleSubmit}
+        loading={loading}
+        events={marketEvents}
+        hoveredEventIndex={hoveredEventIndex}
+        onEventHover={setHoveredEventIndex}
+      />
 
       {loading && <ProgressBar progress={progress} stage={stage} />}
 
@@ -133,121 +158,19 @@ export default function BacktestPage() {
 
       {data && meta && (
         <>
-          <SummaryStats data={data} meta={meta} />
-
-          {/* Cards row */}
-          {(() => {
-            const cdfPct = meta.realized_price != null
-              ? interpCdfAt(meta.realized_price, data.prices, data.cdf)
-              : null;
-            const badge = cdfPct != null ? getAccuracyBadge(cdfPct) : null;
-            const hasRealized = meta.realized_price != null && badge && cdfPct != null;
-            return (
-              <div style={{ display: "grid", gridTemplateColumns: hasRealized ? "repeat(auto-fit, minmax(250px, 1fr))" : "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
-                {hasRealized ? (
-                  <>
-                    {/* Backtest Result card */}
-                    <div style={{
-                      background: "#1a2e1a",
-                      border: "1px solid #2a5a2a",
-                      borderRadius: 8,
-                      padding: 12,
-                      fontSize: 13,
-                      color: "#aaa",
-                      lineHeight: 1.6,
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "center",
-                    }}>
-                      <strong style={{ color: "#2ecc71", fontSize: 14 }}>Backtest Result</strong>
-                      <div style={{ marginTop: 6, fontSize: 12 }}>
-                        Predicted <strong style={{ color: "#ccc" }}>${median.toFixed(0)}</strong>,
-                        actual was <strong style={{ color: "#2ecc71" }}>${meta.realized_price!.toFixed(2)}</strong>
-                      </div>
-                    </div>
-
-                    {/* Accuracy badge card */}
-                    <div style={{
-                      background: badge!.bg,
-                      border: `1px solid ${badge!.color}33`,
-                      borderRadius: 8,
-                      padding: 12,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 8,
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{
-                          background: badge!.color,
-                          color: "#000",
-                          fontWeight: 700,
-                          fontSize: 11,
-                          padding: "2px 8px",
-                          borderRadius: 4,
-                        }}>
-                          {badge!.label}
-                        </span>
-                        <span style={{ color: badge!.color, fontWeight: 600, fontSize: 13 }}>
-                          CDF: {(cdfPct! * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 11, color: "#bbb", lineHeight: 1.5 }}>
-                        {badge!.explanation}
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  /* Prediction card (no realized price) */
-                  <div style={{
-                    background: "#1a2e2e",
-                    border: "1px solid #2a5a5a",
-                    borderRadius: 8,
-                    padding: 12,
-                    fontSize: 13,
-                    color: "#aaa",
-                    lineHeight: 1.6,
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                  }}>
-                    <strong style={{ color: "#2ecc71", fontSize: 14 }}>Prediction</strong>
-                    <div style={{ marginTop: 6, fontSize: 12 }}>
-                      Given option prices from {meta.obs_date_from} to {meta.obs_date_to}, the
-                      market predicts {meta.ticker} around <strong style={{ color: "#ccc" }}>${median.toFixed(0)}</strong> by {meta.target_date}.
-                    </div>
-                  </div>
-                )}
-
-                {/* Risk Gauge card */}
-                <RiskGauge data={data} spot={meta.spot} predicted={median} realized={meta.realized_price} />
-              </div>
-            );
-          })()}
-
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <span style={{ fontSize: 12, color: "#888" }}>Chance price lands in shaded range:</span>
-            {([{ level: 50 as const, label: "Coin flip (50%)" }, { level: 90 as const, label: "Near certain (90%)" }]).map(({ level, label }) => (
-              <button
-                key={level}
-                onClick={() => setCiLevel(level)}
-                style={{
-                  padding: "4px 12px",
-                  borderRadius: 4,
-                  border: `1px solid ${ciLevel === level ? "#6c63ff" : "#333"}`,
-                  background: ciLevel === level ? "#6c63ff" : "transparent",
-                  color: ciLevel === level ? "#fff" : "#888",
-                  cursor: "pointer",
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
-              >
-                {label}
-              </button>
-            ))}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "stretch" }}>
+            <SummaryStats data={data} meta={meta} />
+            <MarketContext
+              events={marketEvents}
+              loading={marketLoading}
+              disclaimer={marketDisclaimer}
+              hoveredIndex={hoveredEventIndex}
+              onHover={setHoveredEventIndex}
+            />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 20 }}>
-            <PdfChart key={`pdf-${meta.obs_date}-${meta.target_date}-${ciLevel}`} data={data} spot={meta.spot} realized={isPrediction ? undefined : meta.realized_price} predicted={median} ciLevel={ciLevel} />
+            <PdfChart key={`pdf-${meta.obs_date}-${meta.target_date}-${ciLevel}`} data={data} spot={meta.spot} realized={isPrediction ? undefined : meta.realized_price} predicted={median} ciLevel={ciLevel} onCiLevelChange={setCiLevel} />
             <CdfChart key={`cdf-${meta.obs_date}-${meta.target_date}-${ciLevel}`} data={data} spot={meta.spot} realized={isPrediction ? undefined : meta.realized_price} predicted={median} ciLevel={ciLevel} />
           </div>
 
@@ -324,7 +247,7 @@ function ExplainerModal({ onClose }: { onClose: () => void }) {
           <Section title="The Approach">
             Black-Scholes normally takes volatility in and gives a price out. We reverse it:
             given market prices across many strikes, we solve for the implied volatility at
-            each one, producing the IV smile. That curve is smoothed with a cubic B-spline,
+            each one, producing the IV smile. That curve is smoothed,
             then we reprice options on a dense grid and take the second derivative with respect
             to strike (Breeden-Litzenberger) to recover the risk-neutral probability
             distribution of the stock's future price.

@@ -49,32 +49,27 @@ export function getAccuracyBadge(cdfPct: number): { label: string; color: string
       label: "Tail Event",
       color: "#f1c40f",
       bg: "rgba(241, 196, 15, 0.12)",
-      explanation: "Realized price was in the outer range of the distribution. An uncommon but not extreme outcome. The market underestimated how far the price would move.",
+      explanation: "Realized price was in the outer range of the distribution. An uncommon but not extreme outcome.",
     };
   }
   return {
     label: "Outlier",
     color: "#e74c3c",
     bg: "rgba(231, 76, 60, 0.12)",
-    explanation: "Realized price fell outside the 90% confidence interval. A rare event the options market did not anticipate. Could indicate a black swan, earnings surprise, or major news.",
+    explanation: "Realized price fell outside the 90% confidence interval. A rare event the options market did not anticipate.",
   };
 }
 
 export default function SummaryStats({ data, meta }: Props) {
   const { prices, pdf, cdf } = data;
 
-  const integral = trapezoid(pdf, prices);
   const meanPrice = trapezoid(
     prices.map((p, i) => p * pdf[i]),
     prices
   );
   const median = interpCdf(0.5, cdf, prices);
   const p5 = interpCdf(0.05, cdf, prices);
-  const p25 = interpCdf(0.25, cdf, prices);
-  const p75 = interpCdf(0.75, cdf, prices);
   const p95 = interpCdf(0.95, cdf, prices);
-
-  // Distribution shape
   const variance = trapezoid(
     prices.map((p, i) => (p - meanPrice) ** 2 * pdf[i]),
     prices
@@ -84,63 +79,144 @@ export default function SummaryStats({ data, meta }: Props) {
     prices.map((p, i) => ((p - meanPrice) / stdDev) ** 3 * pdf[i]),
     prices
   );
-  const expectedMove = ((p75 - p25) / 2 / meta.spot * 100);
   const cdfAtSpot = interpCdfAt(meta.spot, prices, cdf);
   const downProb = cdfAtSpot * 100;
   const upProb = (1 - cdfAtSpot) * 100;
 
-  const cdfPct = meta.realized_price != null
-    ? interpCdfAt(meta.realized_price, prices, cdf)
-    : null;
+  const hasRealized = meta.realized_price != null;
+  const cdfPct = hasRealized ? interpCdfAt(meta.realized_price!, prices, cdf) : null;
   const badge = cdfPct != null ? getAccuracyBadge(cdfPct) : null;
-
-  const stats: { label: string; value: string; highlight?: string; tooltip: string }[] = [
-    { label: "Ticker", value: meta.ticker, tooltip: "The stock symbol being analyzed." },
-    { label: "Observation Start", value: meta.obs_date_from, tooltip: "Start of the observation window when the options market was observed." },
-    { label: "Observation End", value: meta.obs_date_to, tooltip: "End of the observation window. If different from start, IV is averaged across all trading days in the range." },
-    ...(meta.days_averaged > 1 ? [{ label: "Days Averaged", value: `${meta.days_averaged} trading days`, tooltip: "Number of trading days used to average implied volatility. More days = smoother, more stable prediction." }] : []),
-    { label: "Target Date", value: meta.target_date, tooltip: "The date for which the price distribution is predicted. Options expiring near this date are used." },
-    { label: "Horizon", value: `${meta.days_forward} days`, tooltip: "Number of calendar days between the observation end date and the target date." },
-    { label: "Spot (obs date)", value: `$${meta.spot.toFixed(2)}`, tooltip: "The stock's closing price on the observation date. This is the starting point for the prediction." },
-    { label: "E[Price]", value: `$${meanPrice.toFixed(2)}`, tooltip: "Expected value (mean) of the predicted price distribution. Weighted average of all possible prices by their probability." },
-    { label: "Median", value: `$${median.toFixed(2)}`, tooltip: "The 50th percentile. There's a 50% chance the price ends up above this and 50% below." },
-    { label: "90% CI", value: `$${p5.toFixed(0)} to $${p95.toFixed(0)}`, tooltip: "90% Confidence Interval. The market implies a 90% probability that the price falls within this range (5th to 95th percentile)." },
-    { label: "Std Dev", value: `$${stdDev.toFixed(2)}`, tooltip: "Standard deviation of the predicted distribution. Higher = more uncertainty about the future price." },
-    { label: "Skew", value: skew.toFixed(2), highlight: skew < -0.3 ? "#e74c3c" : skew > 0.3 ? "#2ecc71" : undefined, tooltip: "Distribution asymmetry. Negative (red) = heavier left tail, meaning crash risk is priced in. Positive (green) = upside bias. Near zero = symmetric." },
-    { label: "Expected Move", value: `±${expectedMove.toFixed(1)}%`, tooltip: "The interquartile range (P25 to P75) expressed as a percentage of the spot price. Represents the market's 'typical' expected move." },
-    { label: "P(down) / P(up)", value: `${downProb.toFixed(0)}% / ${upProb.toFixed(0)}%`, tooltip: "Probability of the price being below (down) or above (up) the current spot price at the target date." },
-    { label: "Expiry Used", value: meta.expiry_used, tooltip: "The actual options expiry date used (nearest standard monthly expiry to the target date)." },
-  ];
-
-  if (meta.realized_price != null && cdfPct != null) {
-    const error = meta.realized_price - median;
-    stats.push(
-      { label: "Actual Price", value: `$${meta.realized_price.toFixed(2)}`, highlight: "#2ecc71", tooltip: "The stock's actual closing price on the target date, fetched for backtesting comparison." },
-      { label: "Error (vs median)", value: `${error >= 0 ? "+" : ""}$${error.toFixed(2)}`, tooltip: "Prediction error: actual price minus predicted median. Positive = price was higher than predicted." },
-    );
-  }
+  const isPrediction = !hasRealized;
 
   return (
-    <div
-      style={{
-        background: "#1a1a2e",
-        borderRadius: 8,
-        padding: 16,
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+
+      {/* Top banner: Result summary */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        flexWrap: "wrap",
         gap: 12,
-      }}
-    >
-      {stats.map((s) => (
-        <div key={s.label} title={s.tooltip} style={{ cursor: "help" }}>
-          <div style={{ fontSize: 11, color: "#888", marginBottom: 4, borderBottom: "1px dotted #444", display: "inline" }}>
-            {s.label}
+        padding: "10px 14px",
+        borderRadius: 8,
+        background: hasRealized ? "#0f1f0f" : "#0f1f1f",
+        border: `1px solid ${hasRealized ? "#2a5a2a" : "#2a5a5a"}`,
+      }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+            <strong style={{ color: isPrediction ? "#2ecc71" : "#2ecc71", fontSize: 15 }}>
+              {meta.ticker} {isPrediction ? "Prediction" : "Backtest"}
+            </strong>
+            {badge && (
+              <span style={{
+                background: badge.color,
+                color: "#000",
+                fontWeight: 700,
+                fontSize: 10,
+                padding: "2px 8px",
+                borderRadius: 4,
+              }}>
+                {badge.label}
+              </span>
+            )}
           </div>
-          <div style={{ fontSize: 15, fontWeight: 600, color: s.highlight || "#e0e0e0" }}>
-            {s.value}
+          <div style={{ fontSize: 12, color: "#aaa", lineHeight: 1.6 }}>
+            {isPrediction ? (
+              <>
+                Given option prices from {meta.obs_date_from} to {meta.obs_date_to}, the
+                market predicts {meta.ticker} around <strong style={{ color: "#ccc" }}>${median.toFixed(0)}</strong> by {meta.target_date}.
+                {" "}The current price is <strong style={{ color: "#ccc" }}>${meta.spot.toFixed(2)}</strong>.
+              </>
+            ) : (
+              <>
+                Predicted <strong style={{ color: "#ccc" }}>${median.toFixed(0)}</strong>,
+                actual was <strong style={{ color: "#2ecc71" }}>${meta.realized_price!.toFixed(2)}</strong>.
+                {badge && (
+                  <span style={{ color: "#888" }}> {badge.explanation}</span>
+                )}
+                {cdfPct != null && (
+                  <span style={{ color: "#888" }}>
+                    {" "}Only <strong style={{ color: badge?.color || "#ccc" }}>{(cdfPct * 100).toFixed(1)}%</strong> of predicted outcomes were below the actual price.
+                  </span>
+                )}
+              </>
+            )}
           </div>
         </div>
-      ))}
+      </div>
+
+      {/* Grouped stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <StatsGroup title="Setup" color="#6c63ff">
+          <Stat label="Observation Window" value={`${meta.obs_date_from} to ${meta.obs_date_to}`} tooltip="The date range of options data used to build the prediction." />
+          {meta.days_averaged > 1 && (
+            <Stat label="Trading Days" value={`${meta.days_averaged}`} tooltip="Number of trading days used to average implied volatility." />
+          )}
+          <Stat label="Expiry Used" value={meta.expiry_used} tooltip="Options expiry date used (nearest to target)." />
+        </StatsGroup>
+
+        <StatsGroup title="Prediction" color="#2ecc71" columns={2}>
+          <Stat label="Target Date" value={meta.target_date} tooltip="The date for which the price distribution is predicted." />
+          <Stat label="Horizon" value={`${meta.days_forward} days`} tooltip="Calendar days between observation end and target date." />
+          <Stat label="Spot" value={`$${meta.spot.toFixed(2)}`} tooltip="Stock price at observation date." />
+          <Stat label="Prediction" value={`$${median.toFixed(2)}`} tooltip="Predicted price (50th percentile of the distribution)." />
+          <Stat label="90% CI" value={`$${p5.toFixed(0)} - $${p95.toFixed(0)}`} tooltip="90% confidence interval (5th to 95th percentile)." />
+          {hasRealized && (
+            <>
+              <Stat label="Actual Price" value={`$${meta.realized_price!.toFixed(2)}`} highlight="#2ecc71" tooltip="Actual closing price on the target date." />
+              <Stat label="Error" value={`${(meta.realized_price! - median) >= 0 ? "+" : ""}$${(meta.realized_price! - median).toFixed(2)}`} tooltip="Actual price minus predicted median." />
+            </>
+          )}
+        </StatsGroup>
+
+        <StatsGroup title="Risk Profile" color="#e67e22">
+          <Stat label="Std Dev" value={`$${stdDev.toFixed(2)}`} tooltip="Standard deviation. Higher = more uncertainty." />
+          <Stat label="Skew" value={skew.toFixed(2)} highlight={skew < -0.3 ? "#e74c3c" : skew > 0.3 ? "#2ecc71" : undefined} tooltip="Distribution asymmetry. Negative = crash risk priced in." />
+          <Stat label="P(down) / P(up)" value={`${downProb.toFixed(0)}% / ${upProb.toFixed(0)}%`} tooltip="Probability of price below/above current spot at target date." />
+        </StatsGroup>
+      </div>
+    </div>
+  );
+}
+
+function StatsGroup({ title, children, columns, color }: { title: string; children: React.ReactNode; columns?: number; color?: string }) {
+  return (
+    <div style={{
+      background: color ? `${color}08` : "#0f0f1a",
+      border: `1px solid ${color ? `${color}30` : "#1a1a2e"}`,
+      borderRadius: 8,
+      padding: "10px 12px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 8,
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: color || "#555", textTransform: "uppercase", letterSpacing: 1 }}>
+        {title}
+      </div>
+      {columns ? (
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: 8 }}>
+          {children}
+        </div>
+      ) : children}
+    </div>
+  );
+}
+
+function Stat({ label, value, highlight, tooltip }: {
+  label: string;
+  value: string;
+  highlight?: string;
+  tooltip: string;
+}) {
+  return (
+    <div title={tooltip} style={{ cursor: "help" }}>
+      <div style={{ fontSize: 10, color: "#666", marginBottom: 2, borderBottom: "1px dotted #333", display: "inline" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: highlight || "#e0e0e0" }}>
+        {value}
+      </div>
     </div>
   );
 }

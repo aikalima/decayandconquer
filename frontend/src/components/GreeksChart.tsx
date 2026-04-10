@@ -1,3 +1,4 @@
+import React from "react";
 import {
   Chart as ChartJS,
   LineElement,
@@ -31,7 +32,7 @@ function findIdx(prices: number[], target: number): number {
   );
 }
 
-export default function GreeksChart({ greeks, spot }: Props) {
+export default React.memo(function GreeksChart({ greeks, spot }: Props) {
   // Downsample to ~500 points
   const step = Math.max(1, Math.floor(greeks.strikes.length / 500));
   const strikes = greeks.strikes.filter((_, i) => i % step === 0);
@@ -161,4 +162,4 @@ export default function GreeksChart({ greeks, spot }: Props) {
       />
     </div>
   );
-}
+});

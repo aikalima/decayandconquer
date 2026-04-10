@@ -120,3 +120,32 @@ export async function fetchPredictionStream(
   if (!finalResult) throw new Error("Stream ended without a result");
   return finalResult;
 }
+
+// ---------------------------------------------------------------------------
+// Market Context
+// ---------------------------------------------------------------------------
+
+export interface MarketEvent {
+  date: string;
+  headline: string;
+  category: "earnings" | "macro" | "geopolitical" | "sector" | "company" | "regulatory";
+  impact: string;
+}
+
+export interface MarketContextResponse {
+  events: MarketEvent[];
+  disclaimer: string;
+}
+
+export async function fetchMarketContext(
+  ticker: string,
+  obsFrom: string,
+  obsTo: string,
+): Promise<MarketContextResponse> {
+  const qs = new URLSearchParams({ ticker, obs_from: obsFrom, obs_to: obsTo });
+  const res = await fetch(`${API_BASE}/market-context?${qs}`);
+  if (!res.ok) {
+    return { events: [], disclaimer: "Failed to fetch market context." };
+  }
+  return res.json();
+}

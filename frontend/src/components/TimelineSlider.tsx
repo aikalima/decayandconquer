@@ -1,4 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from "react";
+import { CATEGORY_COLORS } from "./categoryColors";
+
+interface EventMarker {
+  date: string;
+  category: string;
+}
 
 interface Props {
   onObsRangeChange: (from: string, to: string) => void;
@@ -6,6 +12,9 @@ interface Props {
   initialObsFrom?: string;
   initialObsTo?: string;
   initialTarget?: string;
+  events?: EventMarker[];
+  hoveredEventIndex?: number | null;
+  onEventHover?: (index: number | null) => void;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -47,6 +56,9 @@ export default function TimelineSlider({
   initialObsFrom = "2025-11-01",
   initialObsTo = "2026-03-01",
   initialTarget,
+  events = [],
+  hoveredEventIndex,
+  onEventHover,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -77,11 +89,12 @@ export default function TimelineSlider({
   }, []);
 
   useEffect(() => {
-    // Center on obs range on mount
-    const centerDay = (obsFrom + obsTo) / 2;
+    // Center to show both obs range and target dot
+    const rightEdge = target !== null ? target : obsTo;
+    const centerDay = (obsFrom + rightEdge) / 2;
     const centerX = (centerDay / TOTAL_DAYS) * TRACK_TOTAL_WIDTH;
     setPanOffset(-(centerX - containerWidth / 2));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dayToX = useCallback((d: number) => (d / TOTAL_DAYS) * TRACK_TOTAL_WIDTH + panOffset, [panOffset]);
   const xToDay = useCallback(
@@ -211,9 +224,9 @@ export default function TimelineSlider({
   }
 
   return (
-    <div style={{ position: "relative", padding: "28px 0 8px", userSelect: "none", minHeight: 110 }}>
+    <div style={{ position: "relative", padding: "12px 0 8px", userSelect: "none", minHeight: 120 }}>
       {/* Date labels */}
-      <div style={{ position: "relative", height: 18, marginBottom: 4 }}>
+      <div style={{ position: "relative", height: 18, marginBottom: 2 }}>
         <div style={{ position: "absolute", left: 0, fontSize: 10, color: "#6c63ff", fontWeight: 600 }}>
           Observe: {formatShort(obsFrom)} to {formatShort(obsTo)}
         </div>
@@ -237,7 +250,7 @@ export default function TimelineSlider({
           overflow: "hidden",
           cursor: dragging.current === "pan" ? "grabbing" : "grab",
           touchAction: "none",
-          paddingTop: 12,
+          paddingTop: 20,
           paddingBottom: 4,
         }}
       >
@@ -253,12 +266,12 @@ export default function TimelineSlider({
         >
           {/* Today line - full height */}
           <div style={{
-            position: "absolute", left: todayX, top: -12, width: 2, height: 56,
+            position: "absolute", left: todayX, top: -20, width: 2, height: 64,
             background: "#2ecc71", opacity: 0.6, pointerEvents: "none", zIndex: 1,
             borderRadius: 1,
           }} />
           <div style={{
-            position: "absolute", left: todayX + 5, top: -10, fontSize: 9,
+            position: "absolute", left: todayX + 5, top: -18, fontSize: 9,
             color: "#2ecc71", fontWeight: 600, pointerEvents: "none", zIndex: 1,
           }}>
             Today
@@ -281,6 +294,45 @@ export default function TimelineSlider({
           {target !== null && targetX !== null && (
             <Handle x={targetX} onPointerDown={(e) => handlePointerDown("target", e)} color={targetColor} dataTutorial="target-dot" />
           )}
+
+          {/* Event markers */}
+          {events.map((evt, i) => {
+            const evtX = dayToX(dateToDayIndex(evt.date));
+            const color = CATEGORY_COLORS[evt.category] || "#888";
+            const isHovered = hoveredEventIndex === i;
+            return (
+              <div key={`evt-${i}`} style={{ position: "absolute", left: evtX, top: -20, pointerEvents: "none", zIndex: 1 }}>
+                {/* Vertical line */}
+                <div style={{
+                  width: 1,
+                  height: 64,
+                  background: color,
+                  opacity: isHovered ? 0.8 : 0.3,
+                  transition: "opacity 0.15s",
+                  borderRadius: 1,
+                }} />
+                {/* Dot */}
+                <div
+                  onMouseEnter={(e) => { e.stopPropagation(); onEventHover?.(i); }}
+                  onMouseLeave={(e) => { e.stopPropagation(); onEventHover?.(null); }}
+                  style={{
+                    position: "absolute",
+                    top: -2,
+                    left: isHovered ? -6 : -5,
+                    width: isHovered ? 12 : 10,
+                    height: isHovered ? 12 : 10,
+                    borderRadius: "50%",
+                    background: color,
+                    border: "1.5px solid #0f0f1a",
+                    cursor: "pointer",
+                    pointerEvents: "auto",
+                    transition: "all 0.15s",
+                    zIndex: 5,
+                  }}
+                />
+              </div>
+            );
+          })}
         </div>
 
         {/* Month labels */}
