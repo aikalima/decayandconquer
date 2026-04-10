@@ -126,4 +126,16 @@ cython_debug/
 
 # Server logs
 server.log
+server_log.out
 server.pid
+
+# DuckDB
+*.duckdb
+*.duckdb.wal
+
+# Flat files (bulk options data)
+backend/app/data/flat_files/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/

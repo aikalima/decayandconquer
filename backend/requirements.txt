@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+python-multipart
+pytest
+httpx
+scipy
+massive
+matplotlib
+pandas
+numpy
+duckdb
+boto3
