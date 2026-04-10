@@ -1,6 +1,6 @@
 # decay_core
 
-Risk-neutral probability distribution estimation from options market data. Extracts the market-implied PDF of future prices from European call option quotes using Black-Scholes inversion, spline smoothing, and the Breeden-Litzenberger formula.
+Predict where a stock is headed by reverse-engineering probability distributions from 90 million+ options data points. Extracts the market-implied risk-neutral PDF of future prices using Black-Scholes inversion, B-spline smoothing, and the Breeden-Litzenberger formula.
 
 ## How It Works
 
@@ -137,8 +137,8 @@ decay_core/
   frontend/
     src/
       layouts/               # SaaS shell (header, sidebar)
-      pages/                 # Backtest, Predictions (coming soon)
-      components/            # Charts (Chart.js), forms, stats
+      pages/                 # Analyze (home), Chat (coming soon)
+      components/            # Charts (Chart.js), forms, timeline, stats
       api/                   # Backend API client
     package.json
 ```
