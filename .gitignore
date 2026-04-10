@@ -136,6 +136,9 @@ server.pid
 # Flat files (bulk options data)
 backend/app/data/flat_files/
 
+# Cached API responses
+backend/app/data/cache/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/

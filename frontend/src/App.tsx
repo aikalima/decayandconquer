@@ -1,15 +1,15 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import AppLayout from "./layouts/AppLayout";
 import BacktestPage from "./pages/BacktestPage";
-import PredictionsPage from "./pages/PredictionsPage";
+import ChatPage from "./pages/ChatPage";
 
 export default function App() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
-        <Route path="/backtest" element={<BacktestPage />} />
-        <Route path="/predictions" element={<PredictionsPage />} />
-        <Route path="*" element={<Navigate to="/backtest" replace />} />
+        <Route path="/" element={<BacktestPage />} />
+        <Route path="/predictions" element={<ChatPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
   );

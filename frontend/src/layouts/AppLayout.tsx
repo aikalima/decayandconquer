@@ -1,6 +1,5 @@
 import { Outlet } from "react-router-dom";
 import Header from "./Header";
-import Sidebar from "./Sidebar";
 
 export default function AppLayout() {
   return (
@@ -16,18 +15,17 @@ export default function AppLayout() {
       }}
     >
       <Header />
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <Sidebar />
-        <main
-          style={{
-            flex: 1,
-            overflow: "auto",
-            padding: 24,
-          }}
-        >
-          <Outlet />
-        </main>
-      </div>
+      <main
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          overflowX: "hidden",
+          padding: 24,
+          scrollbarWidth: "none",
+        }}
+      >
+        <Outlet />
+      </main>
     </div>
   );
 }

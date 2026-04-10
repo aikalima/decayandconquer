@@ -38,7 +38,7 @@ export default function IvSmileChart({ ivSmile, spot }: Props) {
   const smoothIv = ivSmile.smooth_iv.filter((_, i) => i % step === 0);
 
   return (
-    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16 }}>
+    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16, minHeight: 300 }}>
       <h3 style={{ margin: "0 0 4px", fontSize: 15, color: "#ccc" }}>
         Implied Volatility Smile
       </h3>

@@ -2,6 +2,44 @@ import type { PredictionParams, PredictionResponse } from "../types/prediction";
 
 const API_BASE = "http://localhost:6173";
 
+// ---------------------------------------------------------------------------
+// Chat
+// ---------------------------------------------------------------------------
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ToolResult {
+  tool: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+}
+
+export interface ChatResponse {
+  response: string;
+  tool_results: ToolResult[];
+}
+
+export type ChatProvider = "google" | "anthropic";
+
+export async function sendChatMessage(
+  messages: ChatMessage[],
+  provider: ChatProvider = "google"
+): Promise<ChatResponse> {
+  const res = await fetch(`${API_BASE}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages, provider }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(body.detail || `Chat error: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function fetchPrediction(
   params: PredictionParams
 ): Promise<PredictionResponse> {

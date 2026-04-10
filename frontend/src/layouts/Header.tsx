@@ -12,21 +12,13 @@ export default function Header() {
         borderBottom: "1px solid #2a2a4a",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center" }}>
         <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.5 }}>
-          decay<span style={{ color: "#6c63ff" }}>_core</span>
-        </span>
-        <span style={{ fontSize: 12, color: "#888", marginLeft: 8 }}>
-          Options Price Distribution
+          Decay <span style={{ color: "#6c63ff" }}>And Conquer</span>
         </span>
       </div>
 
-      <div style={{ display: "flex", gap: 12 }}>
-        <button style={btnStyle}>Sign In</button>
-        <button style={{ ...btnStyle, background: "#6c63ff", color: "#fff" }}>
-          My Account
-        </button>
-      </div>
+      <div style={{ display: "flex", gap: 12 }} />
     </header>
   );
 }

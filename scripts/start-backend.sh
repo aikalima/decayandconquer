@@ -11,4 +11,5 @@ if [ ! -d "$VENV_DIR" ]; then
 fi
 
 export MASSIVE_API_KEY="${MASSIVE_API_KEY:-rvyOh4B22MMK1q5HnnJL8Dh1bAKbCQ4A}"
+export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
 exec $VENV_DIR/bin/uvicorn app.main:app --host 0.0.0.0 --port 6173 --reload --reload-dir app

@@ -35,7 +35,7 @@ export default function RiskGauge({ data, spot, predicted, realized }: Props) {
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
         <span style={{ fontSize: 12, color: "#888" }}>Price Distribution Range</span>
         <span style={{ fontSize: 11, color: "#666" }}>
-          ${min.toFixed(0)} — ${max.toFixed(0)}
+          ${min.toFixed(0)} to ${max.toFixed(0)}
         </span>
       </div>
 
@@ -49,15 +49,15 @@ export default function RiskGauge({ data, spot, predicted, realized }: Props) {
         }}
       >
         {/* Tail zones */}
-        <Zone left={0} width={pct(p5)} color="rgba(231, 76, 60, 0.15)" />
-        <Zone left={pct(p95)} width={100 - pct(p95)} color="rgba(231, 76, 60, 0.15)" />
+        <Zone left={0} width={pct(p5)} color="rgba(231, 76, 60, 0.3)" />
+        <Zone left={pct(p95)} width={100 - pct(p95)} color="rgba(231, 76, 60, 0.3)" />
 
         {/* 90% CI zones */}
-        <Zone left={pct(p5)} width={pct(p25) - pct(p5)} color="rgba(241, 196, 15, 0.15)" />
-        <Zone left={pct(p75)} width={pct(p95) - pct(p75)} color="rgba(241, 196, 15, 0.15)" />
+        <Zone left={pct(p5)} width={pct(p25) - pct(p5)} color="rgba(241, 196, 15, 0.3)" />
+        <Zone left={pct(p75)} width={pct(p95) - pct(p75)} color="rgba(241, 196, 15, 0.3)" />
 
         {/* 50% CI (core) */}
-        <Zone left={pct(p25)} width={pct(p75) - pct(p25)} color="rgba(46, 204, 113, 0.2)" />
+        <Zone left={pct(p25)} width={pct(p75) - pct(p25)} color="rgba(46, 204, 113, 0.35)" />
 
         {/* Markers */}
         <Marker position={pct(spot)} color="#e74c3c" label="Spot" />
@@ -76,11 +76,11 @@ export default function RiskGauge({ data, spot, predicted, realized }: Props) {
           color: "#555",
         }}
       >
-        <span>P5: ${p5.toFixed(0)}</span>
-        <span>P25: ${p25.toFixed(0)}</span>
-        <span style={{ color: "#888" }}>Median: ${predicted.toFixed(0)}</span>
-        <span>P75: ${p75.toFixed(0)}</span>
-        <span>P95: ${p95.toFixed(0)}</span>
+        <span style={{ color: "#e74c3c99" }}>P5: ${p5.toFixed(0)}</span>
+        <span style={{ color: "#f1c40f99" }}>P25: ${p25.toFixed(0)}</span>
+        <span style={{ color: "#aaa" }}>Median: ${predicted.toFixed(0)}</span>
+        <span style={{ color: "#f1c40f99" }}>P75: ${p75.toFixed(0)}</span>
+        <span style={{ color: "#e74c3c99" }}>P95: ${p95.toFixed(0)}</span>
       </div>
     </div>
   );

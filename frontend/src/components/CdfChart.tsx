@@ -56,7 +56,7 @@ export default function CdfChart({ data, spot, realized, predicted, ciLevel = 90
   const pHigh = interpCdf(1 - tailPct, data.cdf, data.prices);
 
   return (
-    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16 }}>
+    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16, minHeight: 300 }}>
       <h3 style={{ margin: "0 0 12px", fontSize: 15, color: "#ccc" }}>
         Cumulative Distribution
       </h3>

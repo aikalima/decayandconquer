@@ -10,3 +10,5 @@ pandas
 numpy
 duckdb
 boto3
+anthropic
+google-genai

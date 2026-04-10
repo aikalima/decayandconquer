@@ -130,6 +130,21 @@ async def ping():
     return get_ping_response()
 
 
+@app.post("/chat")
+async def chat_endpoint(body: dict):
+    """Conversational AI endpoint. Supports 'google' (default) and 'anthropic' providers."""
+    from app.chat import run_chat
+    messages = body.get("messages", [])
+    provider = body.get("provider", "google")
+    if not messages:
+        raise HTTPException(status_code=400, detail="No messages provided")
+    try:
+        return run_chat(messages, provider=provider)
+    except Exception as e:
+        logger.error("chat failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/predict")
 async def predict_price_route(
     ticker: str = "SPY",

@@ -65,7 +65,7 @@ export default function PdfChart({ data, spot, realized, predicted, ciLevel = 90
   );
 
   return (
-    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16 }}>
+    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16, minHeight: 300 }}>
       <h3 style={{ margin: "0 0 12px", fontSize: 15, color: "#ccc" }}>
         Probability Density
       </h3>

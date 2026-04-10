@@ -8,8 +8,8 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Backtest", path: "/backtest", icon: "📊" },
-  { label: "Predictions", path: "/predictions", disabled: true, icon: "🔮" },
+  { label: "Analyze", path: "/", icon: "📊" },
+  { label: "Predictions", path: "/predictions", icon: "🔮" },
 ];
 
 export default function Sidebar() {
@@ -29,7 +29,9 @@ export default function Sidebar() {
       }}
     >
       {NAV_ITEMS.map((item) => {
-        const active = location.pathname.startsWith(item.path);
+        const active = item.path === "/"
+          ? location.pathname === "/"
+          : location.pathname.startsWith(item.path);
         return (
           <button
             key={item.path}
