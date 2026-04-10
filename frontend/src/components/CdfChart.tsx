@@ -2,6 +2,7 @@ import {
   Chart as ChartJS,
   LineElement,
   PointElement,
+  Filler,
   LinearScale,
   CategoryScale,
   Tooltip,
@@ -13,6 +14,7 @@ import type { PredictionData } from "../types/prediction";
 ChartJS.register(
   LineElement,
   PointElement,
+  Filler,
   LinearScale,
   CategoryScale,
   Tooltip,
@@ -24,6 +26,7 @@ interface Props {
   spot: number;
   realized?: number;
   predicted?: number;
+  ciLevel?: 50 | 90;
 }
 
 function findIdx(prices: number[], target: number): number {
@@ -33,10 +36,24 @@ function findIdx(prices: number[], target: number): number {
   );
 }
 
-export default function CdfChart({ data, spot, realized, predicted }: Props) {
+function interpCdf(target: number, cdf: number[], prices: number[]): number {
+  for (let i = 1; i < cdf.length; i++) {
+    if (cdf[i] >= target) {
+      const t = (target - cdf[i - 1]) / (cdf[i] - cdf[i - 1]);
+      return prices[i - 1] + t * (prices[i] - prices[i - 1]);
+    }
+  }
+  return prices[prices.length - 1];
+}
+
+export default function CdfChart({ data, spot, realized, predicted, ciLevel = 90 }: Props) {
   const step = Math.max(1, Math.floor(data.prices.length / 500));
   const prices = data.prices.filter((_, i) => i % step === 0);
   const cdf = data.cdf.filter((_, i) => i % step === 0);
+
+  const tailPct = (100 - ciLevel) / 2 / 100;
+  const pLow = interpCdf(tailPct, data.cdf, data.prices);
+  const pHigh = interpCdf(1 - tailPct, data.cdf, data.prices);
 
   return (
     <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16 }}>
@@ -94,8 +111,46 @@ export default function CdfChart({ data, spot, realized, predicted }: Props) {
               const yScale = chart.scales.y;
               const yTop = chart.chartArea.top;
               const yBottom = chart.chartArea.bottom;
+              const xLeft = chart.chartArea.left;
 
               ctx.save();
+
+              // CI shaded band
+              const pLowX = xScale.getPixelForValue(findIdx(prices, pLow));
+              const pHighX = xScale.getPixelForValue(findIdx(prices, pHigh));
+              const yLow = yScale.getPixelForValue(tailPct);
+              const yHigh = yScale.getPixelForValue(1 - tailPct);
+              ctx.fillStyle = "rgba(168, 130, 255, 0.1)";
+              ctx.fillRect(pLowX, yTop, pHighX - pLowX, yBottom - yTop);
+
+              // Horizontal lines at CI bounds
+              ctx.strokeStyle = "rgba(168, 130, 255, 0.35)";
+              ctx.lineWidth = 1;
+              ctx.setLineDash([3, 3]);
+              ctx.beginPath();
+              ctx.moveTo(xLeft, yLow);
+              ctx.lineTo(pLowX, yLow);
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo(xLeft, yHigh);
+              ctx.lineTo(pHighX, yHigh);
+              ctx.stroke();
+
+              // Vertical CI boundary lines
+              ctx.beginPath();
+              ctx.moveTo(pLowX, yTop);
+              ctx.lineTo(pLowX, yBottom);
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo(pHighX, yTop);
+              ctx.lineTo(pHighX, yBottom);
+              ctx.stroke();
+
+              // CI label
+              ctx.fillStyle = "rgba(168, 130, 255, 0.7)";
+              ctx.font = "10px sans-serif";
+              ctx.setLineDash([]);
+              ctx.fillText(`${ciLevel}% CI: $${pLow.toFixed(0)}–$${pHigh.toFixed(0)}`, pLowX + 4, yBottom - 6);
 
               // Spot price (red dashed)
               const spotX = xScale.getPixelForValue(findIdx(prices, spot));
@@ -125,10 +180,9 @@ export default function CdfChart({ data, spot, realized, predicted }: Props) {
                 ctx.lineTo(predX, yBottom);
                 ctx.stroke();
 
-                // Horizontal to Y axis
                 ctx.lineWidth = 1;
                 ctx.beginPath();
-                ctx.moveTo(chart.chartArea.left, predY);
+                ctx.moveTo(xLeft, predY);
                 ctx.lineTo(predX, predY);
                 ctx.stroke();
 
@@ -156,11 +210,10 @@ export default function CdfChart({ data, spot, realized, predicted }: Props) {
                 ctx.lineTo(realX, yBottom);
                 ctx.stroke();
 
-                // Horizontal line to Y axis
                 ctx.setLineDash([4, 3]);
                 ctx.lineWidth = 1;
                 ctx.beginPath();
-                ctx.moveTo(chart.chartArea.left, realY);
+                ctx.moveTo(xLeft, realY);
                 ctx.lineTo(realX, realY);
                 ctx.stroke();
 

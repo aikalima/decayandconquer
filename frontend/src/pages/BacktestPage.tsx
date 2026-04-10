@@ -2,10 +2,12 @@ import { useState } from "react";
 import PredictionForm from "../components/PredictionForm";
 import PdfChart from "../components/PdfChart";
 import CdfChart from "../components/CdfChart";
+import IvSmileChart from "../components/IvSmileChart";
+import RiskGauge from "../components/RiskGauge";
 import SummaryStats from "../components/SummaryStats";
 import ProgressBar from "../components/ProgressBar";
 import { fetchPredictionStream } from "../api/client";
-import type { PredictionParams, PredictionData, PredictionMeta } from "../types/prediction";
+import type { PredictionParams, PredictionData, PredictionMeta, IvSmile } from "../types/prediction";
 import { parsePredictionResponse } from "../types/prediction";
 
 function computeMedian(data: PredictionData): number {
@@ -22,16 +24,19 @@ function computeMedian(data: PredictionData): number {
 export default function BacktestPage() {
   const [data, setData] = useState<PredictionData | null>(null);
   const [meta, setMeta] = useState<PredictionMeta | null>(null);
+  const [ivSmile, setIvSmile] = useState<IvSmile | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState("");
+  const [ciLevel, setCiLevel] = useState<50 | 90>(90);
 
   const handleSubmit = async (p: PredictionParams) => {
     setLoading(true);
     setError(null);
     setData(null);
     setMeta(null);
+    setIvSmile(null);
     setProgress(0);
     setStage("Starting...");
 
@@ -42,14 +47,18 @@ export default function BacktestPage() {
       });
       setData(parsePredictionResponse(raw));
       setMeta(raw.meta);
+      setIvSmile(raw.iv_smile);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
       setData(null);
       setMeta(null);
+      setIvSmile(null);
     } finally {
       setLoading(false);
     }
   };
+
+  const median = data ? computeMedian(data) : 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -112,16 +121,38 @@ export default function BacktestPage() {
             </div>
           )}
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 20,
-            }}
-          >
-            <PdfChart key={`pdf-${meta.obs_date}-${meta.target_date}`} data={data} spot={meta.spot} realized={meta.realized_price} predicted={computeMedian(data)} />
-            <CdfChart key={`cdf-${meta.obs_date}-${meta.target_date}`} data={data} spot={meta.spot} realized={meta.realized_price} predicted={computeMedian(data)} />
+          <RiskGauge data={data} spot={meta.spot} predicted={median} realized={meta.realized_price} />
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: "#888" }}>Confidence Interval:</span>
+            {([50, 90] as const).map((level) => (
+              <button
+                key={level}
+                onClick={() => setCiLevel(level)}
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: 4,
+                  border: `1px solid ${ciLevel === level ? "#6c63ff" : "#333"}`,
+                  background: ciLevel === level ? "#6c63ff" : "transparent",
+                  color: ciLevel === level ? "#fff" : "#888",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {level}%
+              </button>
+            ))}
           </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            <PdfChart key={`pdf-${meta.obs_date}-${meta.target_date}-${ciLevel}`} data={data} spot={meta.spot} realized={meta.realized_price} predicted={median} ciLevel={ciLevel} />
+            <CdfChart key={`cdf-${meta.obs_date}-${meta.target_date}-${ciLevel}`} data={data} spot={meta.spot} realized={meta.realized_price} predicted={median} ciLevel={ciLevel} />
+          </div>
+
+          {ivSmile && (
+            <IvSmileChart ivSmile={ivSmile} spot={meta.spot} />
+          )}
         </>
       )}
     </div>

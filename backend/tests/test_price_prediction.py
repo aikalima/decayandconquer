@@ -120,7 +120,7 @@ def test_predict_price_default_values():
         'bid':        [24.9, 14.9, 4.9, 0.9, 0.4],
         'ask':        [25.1, 15.1, 5.1, 1.1, 0.6],
     })
-    result = predict_price(quotes=dummy_df, spot=120, days_forward=30, risk_free_rate=0.02)
+    result = predict_price(quotes=dummy_df, spot=120, days_forward=30, risk_free_rate=0.02).df
     assert_valid_result(result)
     plot_result(result, "Dummy", spot=120, days_forward=30, risk_free_rate=0.02,
                 solver="brent", filename="dummy.png")
@@ -139,7 +139,7 @@ def test_predict_price_spy():
         days_forward=30,
         risk_free_rate=0.04,
         solver="brent",
-    )
+    ).df
     assert_valid_result(result, min_rows=10)
     peak_price = result.loc[result["PDF"].idxmax(), "Price"]
     assert 500 < peak_price < 700, f"PDF peak at unexpected price: {peak_price}"
@@ -157,7 +157,7 @@ def test_predict_price_spy_with_kde():
         risk_free_rate=0.04,
         solver="brent",
         kernel_smooth=True,
-    )
+    ).df
     assert_valid_result(result, min_rows=10)
     plot_result(result, "SPY", spot=595.0, days_forward=30, risk_free_rate=0.04,
                 solver="brent", filename="spy_brent_kde.png", kde=True)
@@ -180,7 +180,7 @@ def test_predict_price_nvidia():
         days_forward=NVDA_DAYS,
         risk_free_rate=0.04,
         solver="brent",
-    )
+    ).df
     assert_valid_result(result, min_rows=10)
     peak_price = result.loc[result["PDF"].idxmax(), "Price"]
     assert 80 < peak_price < 200, f"PDF peak at unexpected price: {peak_price}"
@@ -197,7 +197,7 @@ def test_predict_price_nvidia_newton():
         days_forward=NVDA_DAYS,
         risk_free_rate=0.04,
         solver="newton",
-    )
+    ).df
     assert_valid_result(result, min_rows=10)
     plot_result(result, "NVIDIA", spot=NVDA_SPOT, days_forward=NVDA_DAYS, risk_free_rate=0.04,
                 solver="newton", filename="nvidia_newton.png")

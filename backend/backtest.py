@@ -149,7 +149,7 @@ def run_backtest(
                 solver=solver,
                 bspline=bspline,
                 kernel_smooth=kernel_smooth,
-            )
+            ).df
 
             # Score
             scores = score_prediction(pred_df, realized)

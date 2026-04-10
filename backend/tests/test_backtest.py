@@ -127,7 +127,7 @@ class TestScoringWithRealData:
         quotes = pd.read_csv(DATA_DIR / "spy.csv")
         result_df = predict_price(
             quotes=quotes, spot=595.0, days_forward=30, risk_free_rate=0.04,
-        )
+        ).df
 
         score = score_prediction(result_df, 600.0)
         assert 0.0 <= score["cdf_percentile"] <= 1.0

@@ -11,6 +11,7 @@ from app.modules.health import get_ping_response
 from app.prediction_pipeline.predict import (
     predict_price, predict_price_averaged,
     predict_price_with_progress, predict_price_averaged_with_progress,
+    PipelineResult,
 )
 from app.prediction_pipeline.step3_smooth_iv import BSplineParams
 from app.data.db import (
@@ -40,6 +41,21 @@ app.add_middleware(
 
 def _sse(data: dict) -> str:
     return f"data: {json.dumps(data)}\n\n"
+
+
+def _build_response(result: PipelineResult, meta: dict) -> dict:
+    """Serialize PipelineResult + meta into the API response."""
+    return {
+        "data": result.df.to_dict(),
+        "meta": meta,
+        "iv_smile": {
+            "raw_strikes": result.iv_raw_strikes,
+            "raw_iv": result.iv_raw_values,
+            "smooth_strikes": result.iv_smooth_strikes,
+            "smooth_iv": result.iv_smooth_values,
+            "n_strikes": result.n_strikes_used,
+        },
+    }
 
 
 def _get_realized_price(ticker: str, target_date: date) -> Optional[float]:
@@ -163,7 +179,7 @@ async def predict_price_route(
                 ticker_upper, date_from, date_to, len(chains_by_date), db_expiry, spot, source,
             )
 
-            result_df = predict_price_averaged(
+            result = predict_price_averaged(
                 chains_by_date=chains_by_date, spot=spot, days_forward=days_forward,
                 expiry=db_expiry, risk_free_rate=risk_free_rate, solver=solver,
                 bspline=bspline, kernel_smooth=kernel_smooth,
@@ -203,7 +219,7 @@ async def predict_price_route(
                 ticker_upper, observation, expiry, spot, source_log[0],
             )
 
-            result_df = predict_price(
+            result = predict_price(
                 quotes=quotes_df, spot=spot, days_forward=days_forward,
                 risk_free_rate=risk_free_rate, solver=solver,
                 bspline=bspline, kernel_smooth=kernel_smooth,
@@ -227,7 +243,7 @@ async def predict_price_route(
         if realized is not None:
             meta["realized_price"] = realized
 
-        return {"data": result_df.to_dict(), "meta": meta}
+        return _build_response(result, meta)
 
     except ValueError as e:
         logger.error("predict failed (bad input): %s", e)
@@ -287,14 +303,14 @@ async def predict_price_stream(
                     ticker_upper, date_from, date_to, len(chains_by_date), spot, db_expiry,
                 )
 
-                result_df = None
+                result = None
                 for step in predict_price_averaged_with_progress(
                     chains_by_date=chains_by_date, spot=spot, days_forward=df_days,
                     expiry=db_expiry, risk_free_rate=risk_free_rate, solver=solver,
                     bspline=bspline, kernel_smooth=kernel_smooth,
                 ):
-                    if isinstance(step, pd.DataFrame):
-                        result_df = step
+                    if isinstance(step, PipelineResult):
+                        result = step
                     else:
                         yield _sse({"stage": step[0], "progress": step[1]})
 
@@ -335,14 +351,14 @@ async def predict_price_stream(
                     ticker_upper, observation, spot, expiry, source_log[0],
                 )
 
-                result_df = None
+                result = None
                 for step in predict_price_with_progress(
                     quotes=quotes_df, spot=spot, days_forward=df_days,
                     risk_free_rate=risk_free_rate, solver=solver,
                     bspline=bspline, kernel_smooth=kernel_smooth,
                 ):
-                    if isinstance(step, pd.DataFrame):
-                        result_df = step
+                    if isinstance(step, PipelineResult):
+                        result = step
                     else:
                         yield _sse({"stage": step[0], "progress": step[1]})
 
@@ -369,7 +385,7 @@ async def predict_price_stream(
             yield _sse({
                 "done": True,
                 "progress": 100,
-                "result": {"data": result_df.to_dict(), "meta": meta},
+                "result": _build_response(result, meta),
             })
 
         except Exception as e:

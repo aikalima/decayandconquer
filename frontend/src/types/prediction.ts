@@ -12,6 +12,14 @@ export interface PredictionMeta {
   realized_price?: number;
 }
 
+export interface IvSmile {
+  raw_strikes: number[];
+  raw_iv: number[];
+  smooth_strikes: number[];
+  smooth_iv: number[];
+  n_strikes: number;
+}
+
 export interface PredictionResponse {
   data: {
     Price: Record<string, number>;
@@ -19,6 +27,7 @@ export interface PredictionResponse {
     CDF: Record<string, number>;
   };
   meta: PredictionMeta;
+  iv_smile: IvSmile;
 }
 
 export interface PredictionData {
