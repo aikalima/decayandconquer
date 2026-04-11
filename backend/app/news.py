@@ -1,7 +1,8 @@
 """Market context: fetch news/events relevant to a ticker during a date range.
 
-Uses Google Gemini to identify significant market events that likely
-influenced options pricing during the observation period.
+Uses Google Gemini with Google Search grounding to find real, verifiable
+market events that influenced options pricing during the observation period.
+Events are sourced from live Google Search results, not model memory.
 """
 
 from __future__ import annotations
@@ -12,27 +13,27 @@ from datetime import date
 
 logger = logging.getLogger(__name__)
 
-PROMPT_TEMPLATE = """You are a financial markets analyst. List the most significant market events that likely influenced options pricing for the stock ticker {ticker} during the EXACT date range {obs_from} to {obs_to} (inclusive).
+PROMPT_TEMPLATE = """Search for the most significant market events that affected the stock {ticker} between {obs_from} and {obs_to}. Use Google Search to find real news articles from financial sources like Yahoo Finance, Reuters, Bloomberg, CNBC, MarketWatch, and similar.
 
 CRITICAL DATE RULES:
 - Every event date MUST fall within {obs_from} to {obs_to}. No exceptions.
 - Dates must be in YYYY-MM-DD format.
-- Do NOT include events before {obs_from} or after {obs_to}.
-- Double-check the year. The range spans {obs_from} to {obs_to}.
+- Only include events you found in actual search results. Do not guess or fabricate.
 
-Consider:
-- Company-specific news: earnings, guidance, analyst upgrades/downgrades, M&A, management changes
-- Macro events: Fed rate decisions, CPI/inflation data, jobs reports, GDP
-- Geopolitical events: trade wars, sanctions, conflicts, elections
-- Sector-wide moves: regulatory changes, competitor news, industry trends
+Search for:
+- {ticker} earnings, guidance, analyst upgrades/downgrades between {obs_from} and {obs_to}
+- Federal Reserve rate decisions, CPI data, jobs reports between {obs_from} and {obs_to}
+- Geopolitical events affecting markets between {obs_from} and {obs_to}
+- Sector news relevant to {ticker} between {obs_from} and {obs_to}
 
 For each event return:
 - date: the exact date it occurred (YYYY-MM-DD), must be between {obs_from} and {obs_to}
 - headline: one-line summary (max 80 chars)
 - category: one of "earnings", "macro", "geopolitical", "sector", "company", "regulatory"
 - impact: one-line explanation of how this likely affected {ticker}'s options pricing
+- source: the news source name (e.g. "Reuters", "Yahoo Finance")
 
-Return 3-8 events, ordered by relevance. Only include events you are confident actually occurred within this date range. If unsure, return an empty list.
+Return 3-8 events, ordered by relevance. If you cannot find reliable search results, return an empty list.
 
 Respond with ONLY valid JSON, no markdown fences: {{"events": [...]}}"""
 
@@ -54,6 +55,7 @@ def fetch_market_context(
 
     try:
         from google import genai
+        from google.genai import types
 
         client = genai.Client(api_key=api_key)
         prompt = PROMPT_TEMPLATE.format(
@@ -62,9 +64,14 @@ def fetch_market_context(
             obs_to=obs_to,
         )
 
+        # Use Google Search grounding so Gemini pulls from real search results
+        grounding_tool = types.Tool(google_search=types.GoogleSearch())
+        config = types.GenerateContentConfig(tools=[grounding_tool])
+
         response = client.models.generate_content(
             model="gemini-2.0-flash",
             contents=prompt,
+            config=config,
         )
 
         text = response.text.strip()
@@ -98,6 +105,7 @@ def fetch_market_context(
                 "headline": str(e["headline"])[:100],
                 "category": str(e["category"]),
                 "impact": str(e["impact"])[:200],
+                "source": str(e.get("source", ""))[:50],
             })
         return valid
 

@@ -94,6 +94,9 @@ export default function MarketContext({ events, loading, disclaimer, hoveredInde
                 </div>
                 <div style={{ fontSize: 11, color: "#888", lineHeight: 1.4 }}>
                   {event.impact}
+                  {event.source && (
+                    <span style={{ color: "#555", marginLeft: 4 }}>({event.source})</span>
+                  )}
                 </div>
               </div>
             </div>

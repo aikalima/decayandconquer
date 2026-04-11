@@ -423,7 +423,7 @@ async def market_context(
         events = fetch_market_context(ticker, obs_from, obs_to)
         return {
             "events": events,
-            "disclaimer": "AI-generated summary based on the model's training data. Verify independently.",
+            "disclaimer": "Sourced via Google Search grounding. AI-summarized, verify independently.",
         }
     except Exception as e:
         logger.error("market-context failed: %s", e)

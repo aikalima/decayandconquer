@@ -130,6 +130,7 @@ export interface MarketEvent {
   headline: string;
   category: "earnings" | "macro" | "geopolitical" | "sector" | "company" | "regulatory";
   impact: string;
+  source?: string;
 }
 
 export interface MarketContextResponse {
