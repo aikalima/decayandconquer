@@ -25,6 +25,7 @@ from app.data.fetcher import (
     find_nearest_expiry_friday,
 )
 from app.news import fetch_market_context
+from app.screener import scan_all, DEFAULT_TICKERS
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -428,3 +429,35 @@ async def market_context(
     except Exception as e:
         logger.error("market-context failed: %s", e)
         return {"events": [], "disclaimer": "Failed to fetch market context."}
+
+
+@app.get("/theta-plays-stream")
+async def theta_plays_stream(
+    tickers: str = "",
+    days_forward: int = 30,
+    hv_days: int = 20,
+):
+    """Scan tickers for theta play opportunities with SSE progress."""
+    ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()] if tickers else DEFAULT_TICKERS
+
+    async def generate() -> AsyncGenerator[str, None]:
+        import time
+        start = time.time()
+        try:
+            for item in scan_all(ticker_list, days_forward, hv_days):
+                if isinstance(item, dict):
+                    # Final results
+                    item["scan_time_seconds"] = round(time.time() - start, 1)
+                    yield _sse({"done": True, "progress": 100, "results": item})
+                else:
+                    stage, progress, row = item
+                    yield _sse({
+                        "stage": stage,
+                        "progress": progress,
+                        "row": row.__dict__ if row else None,
+                    })
+        except Exception as e:
+            logger.error("theta-plays-stream failed: %s", e)
+            yield _sse({"error": str(e)})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

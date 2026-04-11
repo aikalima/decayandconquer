@@ -331,6 +331,37 @@ def get_stats() -> dict:
     }
 
 
+def query_daily_closes(underlying: str, days: int = 30) -> list[tuple[str, float]]:
+    """Get approximate daily close prices for an underlying from options data.
+
+    Uses deep ITM call options (strike + close ≈ spot) to infer the
+    underlying's daily price. Returns list of (date_str, price) tuples,
+    oldest first.
+    """
+    db = get_db()
+    # For each trade_date, find the lowest-strike call and compute
+    # intrinsic value: spot ≈ strike + call_close for deep ITM calls
+    rows = db.execute("""
+        WITH daily_spot AS (
+            SELECT trade_date,
+                   -- Deep ITM call: spot ≈ strike + call_price
+                   MIN(strike) AS min_strike,
+                   FIRST(close ORDER BY strike) AS min_strike_price
+            FROM options
+            WHERE underlying = ?
+              AND contract_type = 'C'
+              AND close > 0
+            GROUP BY trade_date
+            ORDER BY trade_date DESC
+            LIMIT ?
+        )
+        SELECT trade_date, min_strike + min_strike_price AS spot
+        FROM daily_spot
+        ORDER BY trade_date
+    """, [underlying, days]).fetchall()
+    return [(str(r[0]), float(r[1])) for r in rows]
+
+
 def close_db():
     """Close the database connection."""
     global _connection

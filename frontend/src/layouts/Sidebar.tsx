@@ -9,7 +9,8 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Analyze", path: "/", icon: "📊" },
-  { label: "Predictions", path: "/predictions", icon: "🔮" },
+  { label: "Theta Plays", path: "/theta-plays", icon: "🎯" },
+  { label: "Predictions", path: "/predictions", icon: "🔮", disabled: true },
 ];
 
 export default function Sidebar() {
