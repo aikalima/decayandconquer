@@ -15,11 +15,11 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.data.db import get_db, import_all_flat_files, import_flat_file, get_stats, close_db
 
-DEFAULT_DIR = Path(__file__).parent / "app" / "data" / "flat_files"
+DEFAULT_DIR = Path(__file__).parent.parent / "app" / "data" / "flat_files"
 
 
 def main():

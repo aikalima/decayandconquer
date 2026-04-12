@@ -96,7 +96,12 @@ def find_nearest_expiry_friday(obs_date: date, days_forward: int) -> date:
             delta -= 7
         return target + timedelta(days=delta)
 
-    # Pick the candidate closest to the target date
+    # Prefer the first expiry on or after the target date
+    # (so 30d and 45d don't collapse to the same expiry)
+    on_or_after = [c for c in candidates if c >= target]
+    if on_or_after:
+        return min(on_or_after)
+    # Fallback: closest candidate
     return min(candidates, key=lambda d: abs((d - target).days))
 
 

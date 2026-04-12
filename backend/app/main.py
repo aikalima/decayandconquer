@@ -17,7 +17,11 @@ from app.prediction_pipeline.step3_smooth_iv import BSplineParams
 from app.data.db import (
     query_chain, query_chains_range, has_data,
     find_best_expiry, find_best_expiry_in_range,
+    set_read_only,
 )
+
+# Server only reads from DuckDB — never hold a write lock
+set_read_only(True)
 from app.data.fetcher import (
     fetch_options_chain,
     fetch_spot_price,
@@ -26,6 +30,7 @@ from app.data.fetcher import (
 )
 from app.news import fetch_market_context
 from app.screener import scan_all, DEFAULT_TICKERS
+from app.data.db import get_latest_theta_scan, get_latest_theta_scan_by_expiry, get_theta_results, get_available_theta_expiries
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -142,7 +147,18 @@ async def chat_endpoint(body: dict):
     if not messages:
         raise HTTPException(status_code=400, detail="No messages provided")
     try:
-        return run_chat(messages, provider=provider)
+        result = run_chat(messages, provider=provider)
+        # Sanitize NaN/inf values that break JSON serialization
+        import math
+        def _sanitize(obj):
+            if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+                return None
+            if isinstance(obj, dict):
+                return {k: _sanitize(v) for k, v in obj.items()}
+            if isinstance(obj, list):
+                return [_sanitize(v) for v in obj]
+            return obj
+        return _sanitize(result)
     except Exception as e:
         logger.error("chat failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
@@ -429,6 +445,81 @@ async def market_context(
     except Exception as e:
         logger.error("market-context failed: %s", e)
         return {"events": [], "disclaimer": "Failed to fetch market context."}
+
+
+def _try_theta_json_fallback():
+    """Check for JSON fallback file written when DB was locked."""
+    import json as _json
+    fallback = Path(__file__).parent / "data" / "theta_latest.json"
+    if not fallback.exists():
+        return None
+    try:
+        data = _json.loads(fallback.read_text())
+        rows = data["results"]
+        by_avg = sorted(rows, key=lambda r: r.get("avg_premium", 0), reverse=True)
+        by_call = sorted(rows, key=lambda r: r.get("call_premium", 0), reverse=True)
+        by_put = sorted(rows, key=lambda r: r.get("put_premium", 0), reverse=True)
+        return {
+            "highest_premium": by_avg,
+            "expensive_calls": by_call,
+            "expensive_puts": by_put,
+            "tickers_scanned": data.get("tickers_scanned", len(rows)),
+            "tickers_failed": [],
+            "expiry": data.get("expiry", ""),
+            "scan_time_seconds": data.get("scan_time_seconds", 0),
+            "scan_id": data.get("scan_id", ""),
+            "scanned_at": data.get("scan_id", ""),
+        }
+    except Exception:
+        return None
+
+
+@app.get("/theta-expiries")
+async def theta_expiries():
+    """List available expiry dates from completed theta scans."""
+    return {"expiries": get_available_theta_expiries()}
+
+
+@app.get("/theta-plays")
+async def theta_plays(scan_id: Optional[str] = None, days_forward: Optional[int] = None, expiry: Optional[str] = None):
+    """Serve pre-computed theta plays results from DuckDB or JSON fallback."""
+    if expiry:
+        scan = get_latest_theta_scan_by_expiry(expiry)
+    elif scan_id:
+        scan = None
+    else:
+        scan = get_latest_theta_scan(days_forward)
+
+    if scan is None and scan_id is None:
+        fallback = _try_theta_json_fallback()
+        if fallback:
+            return fallback
+        return {"error": "No scans available. Run run_theta_scan.py first."}
+
+    sid = scan_id or scan["scan_id"]
+    if scan is None:
+        scan = {"scan_id": sid}
+
+    rows = get_theta_results(sid)
+    if not rows:
+        return {"error": f"No results for scan {sid}"}
+
+    by_avg = sorted(rows, key=lambda r: r.get("avg_premium", 0), reverse=True)
+    by_call = sorted(rows, key=lambda r: r.get("call_premium", 0), reverse=True)
+    by_put = sorted(rows, key=lambda r: r.get("put_premium", 0), reverse=True)
+
+    return {
+        "highest_premium": by_avg,
+        "expensive_calls": by_call,
+        "expensive_puts": by_put,
+        "tickers_scanned": scan.get("tickers_scanned", len(rows)),
+        "tickers_failed": [],
+        "expiry": scan.get("expiry", ""),
+        "scan_time_seconds": scan.get("scan_time_seconds", 0),
+        "scan_id": sid,
+        "scanned_at": scan.get("created_at", ""),
+        "hv_days": scan.get("hv_days", 20),
+    }
 
 
 @app.get("/theta-plays-stream")

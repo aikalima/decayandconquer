@@ -187,6 +187,40 @@ export interface ThetaPlaysResponse {
   tickers_scanned: number;
   tickers_failed: string[];
   expiry: string;
+  scan_id?: string;
+  scanned_at?: string;
+  hv_days?: number;
+  error?: string;
+}
+
+export async function fetchThetaPlays(expiry?: string): Promise<ThetaPlaysResponse | null> {
+  try {
+    const qs = expiry ? `?expiry=${expiry}` : "";
+    const res = await fetch(`${API_BASE}/theta-plays${qs}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.error) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export interface ThetaExpiry {
+  expiry: string;
+  last_scanned: string;
+  tickers_scanned: number;
+}
+
+export async function fetchThetaExpiries(): Promise<ThetaExpiry[]> {
+  try {
+    const res = await fetch(`${API_BASE}/theta-expiries`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.expiries || [];
+  } catch {
+    return [];
+  }
 }
 
 export interface ThetaPlaysProgressEvent {

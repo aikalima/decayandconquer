@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import Markdown from "react-markdown";
 import { sendChatMessage } from "../api/client";
-import type { ChatMessage, ToolResult, ChatProvider } from "../api/client";
+import type { ChatMessage, ToolResult } from "../api/client";
 import ChartCanvas from "../components/ChartCanvas";
 
 interface DisplayMessage {
@@ -32,7 +32,6 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [allToolResults, setAllToolResults] = useState<ToolResult[]>([]);
-  const [provider, setProvider] = useState<ChatProvider>("google");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -55,7 +54,7 @@ export default function ChatPage() {
         { role: "user" as const, content: text },
       ];
 
-      const result = await sendChatMessage(history, provider);
+      const result = await sendChatMessage(history, "anthropic");
 
       setMessages((prev) => {
         const updated = [...prev];
@@ -116,10 +115,10 @@ export default function ChatPage() {
                 Ask about stocks, options, predictions. Try:
               </p>
               {[
-                "What's SPY's predicted price for August, observed from May?",
-                "Compare AAPL and NVDA for June 2025",
-                "How many tickers are in the database?",
-                "Which stocks had the highest IV skew on Jan 15?",
+                "What are the top theta plays right now?",
+                "Predict where NVDA will be in 60 days",
+                "Which tickers have the highest options volume?",
+                "Compare AAPL, MSFT and TSLA for next month",
               ].map((q) => (
                 <button
                   key={q}
@@ -150,34 +149,7 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Provider toggle + Input */}
-        <div
-          style={{
-            display: "flex",
-            gap: 6,
-            padding: "6px 16px 0",
-            borderTop: "1px solid #2a2a4a",
-          }}
-        >
-          {(["google", "anthropic"] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() => setProvider(p)}
-              style={{
-                padding: "2px 8px",
-                borderRadius: 4,
-                border: `1px solid ${provider === p ? "#6c63ff" : "#222"}`,
-                background: provider === p ? "#6c63ff22" : "transparent",
-                color: provider === p ? "#6c63ff" : "#555",
-                cursor: "pointer",
-                fontSize: 10,
-                fontWeight: 600,
-              }}
-            >
-              {p === "google" ? "Gemini" : "Claude"}
-            </button>
-          ))}
-        </div>
+        {/* Input */}
         <div
           style={{
             display: "flex",

@@ -77,18 +77,91 @@ venv/bin/python -m pytest tests/ -v
 
 22 tests cover the prediction pipeline, API endpoints, and backtest scoring logic.
 
-## Backtesting
+## CLI Tools
+
+All CLI tools live in `backend/programs/` and run from the `backend/` directory with the virtualenv activated. API keys are loaded from `.env` in the project root.
+
+```bash
+cd backend
+source .venv/bin/activate
+```
+
+### Flat Files (Options Data)
+
+Download and import daily options data from Massive.com S3 into DuckDB (~90M+ rows).
+
+```bash
+# Download a specific month
+python programs/download_flat_files.py --year 2025 --month 6
+
+# Download a specific date
+python programs/download_flat_files.py --date 2025-06-15
+
+# Download and filter to specific tickers only
+python programs/download_flat_files.py --year 2025 --month 1 --tickers SPY,AAPL,NVDA
+
+# List available files without downloading
+python programs/download_flat_files.py --year 2025 --month 1 --list
+
+# Import downloaded flat files into DuckDB
+python programs/import_flat_files.py                    # import all files in flat_files/
+python programs/import_flat_files.py --file app/data/flat_files/2025-06-15.csv.gz  # single file
+python programs/import_flat_files.py --stats            # show DB stats (row count, date range, tickers)
+
+# Catch up — download and import everything since the last file
+python programs/update_flat_files.py                    # download + import new files
+python programs/update_flat_files.py --dry-run          # preview what would be downloaded
+python programs/update_flat_files.py --download-only    # download without importing
+```
+
+**Note:** The backend server holds a DuckDB write lock. Stop it before importing (`scripts/stop-backend.sh`), then restart after.
+
+### Theta Plays Screener
+
+Scan tickers for overpriced options (IV > HV) and store results in DuckDB. The frontend serves pre-computed results instantly via `GET /theta-plays`.
+
+```bash
+# Scan default 30 high-liquidity tickers, 30-day DTE
+python programs/run_theta_scan.py
+
+# Scan top 500 tickers by options volume (~4 min)
+python programs/run_theta_scan.py --top 500
+
+# Scan top 100 tickers (~40 sec)
+python programs/run_theta_scan.py --top 100
+
+# Scan specific tickers
+python programs/run_theta_scan.py --tickers AAPL,MSFT,NVDA,TSLA
+
+# Custom DTE and HV lookback (how many trading days to compute historical volatility)
+python programs/run_theta_scan.py --top 200 --days-forward 45 --hv-days 30
+
+# Purge theta scan data
+python programs/purge_theta.py                  # delete all theta data
+python programs/purge_theta.py --days 30        # delete only 30-day DTE scans
+python programs/purge_theta.py --dry-run        # preview what would be deleted
+```
+
+Results are stored in `theta_scans` and `theta_results` DuckDB tables. The API serves the latest scan at `GET /theta-plays`.
+
+### Backtesting
 
 Run the backtest CLI against historical data via the Massive.com API:
 
 ```bash
-cd backend
-source venv/bin/activate
-python backtest.py --ticker SPY --days-forward 30 --api-key YOUR_KEY
-python backtest.py --ticker AAPL --dates 2025-01-06 2025-01-13 --days-forward 60
+python programs/backtest.py --ticker SPY --days-forward 30
+python programs/backtest.py --ticker AAPL --dates 2025-01-06 2025-01-13 --days-forward 60
 ```
 
-Set `MASSIVE_API_KEY` env var to avoid passing `--api-key` each time.
+### Pipeline Trace (Dev/Debug)
+
+Run the prediction pipeline step-by-step with detailed logging at each stage. Prints stats (row counts, IV ranges, PDF integral) and saves a diagnostic plot. Useful for debugging pipeline parameters.
+
+```bash
+python programs/pipeline_trace.py
+```
+
+Outputs `pipeline_trace.png` with PDF and CDF curves for sample data (SPY, NVIDIA).
 
 ## API
 
@@ -125,20 +198,28 @@ decay_core/
   backend/
     app/
       main.py                # FastAPI server
+      screener.py            # Theta plays computation (IV/HV, beta, efficiency)
+      news.py                # Market context via Gemini + Google Search
       prediction_pipeline/   # 5-step PDF estimation pipeline
       data/
+        db.py                # DuckDB schema + queries (options, theta_scans, theta_results)
         fetcher.py           # Massive.com API client + CSV caching
+        flat_files/          # Downloaded daily options data (.csv.gz)
         cache/               # Cached API responses
-        spy.csv              # Sample SPY options data
-        nvidia_*.csv         # Sample NVIDIA options data
     tests/                   # 22 tests + plot output
-    backtest.py              # CLI backtesting harness
+    programs/
+      download_flat_files.py # Download flat files from Massive S3
+      import_flat_files.py   # Import flat files into DuckDB
+      update_flat_files.py   # Catch up — download + import since last file
+      run_theta_scan.py      # Batch theta plays screener
+      purge_theta.py         # Purge theta scan data
+      backtest.py            # CLI backtesting harness
     requirements.txt
   frontend/
     src/
-      layouts/               # SaaS shell (header, sidebar)
-      pages/                 # Analyze (home), Chat (coming soon)
-      components/            # Charts (Chart.js), forms, timeline, stats
+      layouts/               # Header, sidebar navigation
+      pages/                 # Analyze (home), Theta Plays, Predictions
+      components/            # Charts, forms, timeline, stats, market context
       api/                   # Backend API client
     package.json
 ```

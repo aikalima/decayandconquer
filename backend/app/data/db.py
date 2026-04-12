@@ -25,18 +25,54 @@ DB_PATH = Path(__file__).parent / "options.duckdb"
 FLAT_FILES_DIR = Path(__file__).parent / "flat_files"
 
 _connection: duckdb.DuckDBPyConnection | None = None
+_default_read_only: bool = False
 
 # Regex to parse OCC ticker: O:{UNDERLYING}{YYMMDD}{C|P}{STRIKE*1000 8-digit}
 _OCC_RE = re.compile(r'^O:([A-Z]+)(\d{6})([CP])(\d{8})$')
 
 
-def get_db() -> duckdb.DuckDBPyConnection:
-    """Get or create the DuckDB connection (singleton)."""
+def check_db_writable() -> tuple[bool, str]:
+    """Check if the DB can be opened for writing. Returns (ok, message)."""
+    try:
+        conn = duckdb.connect(str(DB_PATH), read_only=False)
+        conn.close()
+        return True, "DB is writable"
+    except duckdb.IOException as e:
+        msg = str(e)
+        # Extract the locking process info
+        if "Conflicting lock" in msg:
+            # e.g. "...held in /path/to/app (PID 1234) by user foo..."
+            import re
+            m = re.search(r'held in (.+?) \(PID (\d+)\) by user (\w+)', msg)
+            if m:
+                app_path, pid, user = m.groups()
+                app_name = app_path.rsplit("/", 1)[-1]
+                return False, f"DB is locked by {app_name} (PID {pid}). Close it before writing."
+        return False, f"DB is locked: {msg}"
+    except Exception as e:
+        return False, f"DB check failed: {e}"
+
+
+def set_read_only(read_only: bool = True):
+    """Set the default connection mode. Call before first get_db()."""
+    global _default_read_only
+    _default_read_only = read_only
+
+
+def get_db(read_only: bool | None = None) -> duckdb.DuckDBPyConnection:
+    """Get or create the DuckDB connection (singleton).
+
+    The server calls set_read_only(True) at startup so it never holds
+    a write lock. CLI scripts that need to write call get_db(read_only=False).
+    """
     global _connection
+    if read_only is None:
+        read_only = _default_read_only
     if _connection is None:
-        _connection = duckdb.connect(str(DB_PATH))
-        _ensure_schema(_connection)
-        logger.info("DuckDB opened: %s", DB_PATH)
+        _connection = duckdb.connect(str(DB_PATH), read_only=read_only)
+        if not read_only:
+            _ensure_schema(_connection)
+        logger.info("DuckDB opened: %s (read_only=%s)", DB_PATH, read_only)
     return _connection
 
 
@@ -65,6 +101,47 @@ def _ensure_schema(conn: duckdb.DuckDBPyConnection):
             transactions  INTEGER,
 
             PRIMARY KEY (ticker, trade_date)
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS theta_scans (
+            scan_id           VARCHAR PRIMARY KEY,
+            days_forward      INTEGER NOT NULL,
+            hv_days           INTEGER NOT NULL,
+            expiry            DATE NOT NULL,
+            tickers_scanned   INTEGER,
+            tickers_failed    INTEGER,
+            scan_time_seconds DOUBLE,
+            created_at        TIMESTAMP DEFAULT current_timestamp
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS theta_results (
+            scan_id         VARCHAR NOT NULL,
+            ticker          VARCHAR NOT NULL,
+            spot            DOUBLE,
+            expiry          DATE,
+            call_strike     DOUBLE,
+            call_bid        DOUBLE,
+            call_ask        DOUBLE,
+            call_mid        DOUBLE,
+            call_iv         DOUBLE,
+            put_strike      DOUBLE,
+            put_bid         DOUBLE,
+            put_ask         DOUBLE,
+            put_mid         DOUBLE,
+            put_iv          DOUBLE,
+            hv_20           DOUBLE,
+            call_premium    DOUBLE,
+            put_premium     DOUBLE,
+            avg_premium     DOUBLE,
+            call_efficiency DOUBLE,
+            put_efficiency  DOUBLE,
+            beta            DOUBLE,
+            pct_change_5d   DOUBLE,
+            PRIMARY KEY (scan_id, ticker)
         )
     """)
 
@@ -360,6 +437,148 @@ def query_daily_closes(underlying: str, days: int = 30) -> list[tuple[str, float
         ORDER BY trade_date
     """, [underlying, days]).fetchall()
     return [(str(r[0]), float(r[1])) for r in rows]
+
+
+def get_top_tickers_by_volume(limit: int = 500, lookback_days: int = 30) -> list[str]:
+    """Get the top N tickers by options trading volume over the last N days."""
+    db = get_db()
+    rows = db.execute("""
+        SELECT underlying
+        FROM options
+        WHERE trade_date >= CURRENT_DATE - ?
+          AND volume > 0
+        GROUP BY underlying
+        HAVING SUM(volume) > 100
+        ORDER BY SUM(volume) DESC
+        LIMIT ?
+    """, [lookback_days, limit]).fetchall()
+    return [r[0] for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Theta Plays persistence
+# ---------------------------------------------------------------------------
+
+def save_theta_scan(
+    scan_id: str,
+    days_forward: int,
+    hv_days: int,
+    expiry: str,
+    tickers_scanned: int,
+    tickers_failed: int,
+    scan_time_seconds: float,
+) -> None:
+    """Insert a theta scan metadata row."""
+    db = get_db()
+    db.execute("""
+        INSERT OR REPLACE INTO theta_scans
+            (scan_id, days_forward, hv_days, expiry, tickers_scanned, tickers_failed, scan_time_seconds)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, [scan_id, days_forward, hv_days, expiry, tickers_scanned, tickers_failed, scan_time_seconds])
+
+
+def save_theta_results(scan_id: str, rows: list[dict]) -> None:
+    """Bulk insert theta screener results for a scan."""
+    if not rows:
+        return
+    db = get_db()
+    for r in rows:
+        db.execute("""
+            INSERT OR REPLACE INTO theta_results
+                (scan_id, ticker, spot, expiry, call_strike, call_bid, call_ask, call_mid,
+                 call_iv, put_strike, put_bid, put_ask, put_mid, put_iv, hv_20,
+                 call_premium, put_premium, avg_premium, call_efficiency, put_efficiency,
+                 beta, pct_change_5d)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            scan_id, r["ticker"], r["spot"], r["expiry"],
+            r["call_strike"], r["call_bid"], r["call_ask"], r["call_mid"], r["call_iv"],
+            r["put_strike"], r["put_bid"], r["put_ask"], r["put_mid"], r["put_iv"],
+            r["hv_20"], r["call_premium"], r["put_premium"], r["avg_premium"],
+            r["call_efficiency"], r["put_efficiency"], r["beta"], r["pct_change_5d"],
+        ])
+
+
+def get_available_theta_expiries() -> list[dict]:
+    """Get distinct expiry dates from completed theta scans."""
+    db = get_db()
+    rows = db.execute("""
+        SELECT expiry, MAX(created_at) as last_scanned, MAX(tickers_scanned) as tickers
+        FROM theta_scans
+        GROUP BY expiry
+        ORDER BY expiry
+    """).fetchall()
+    return [
+        {"expiry": str(r[0]), "last_scanned": str(r[1]), "tickers_scanned": r[2]}
+        for r in rows
+    ]
+
+
+def get_latest_theta_scan_by_expiry(expiry: str) -> dict | None:
+    """Get the most recent theta scan for a specific expiry date."""
+    db = get_db()
+    row = db.execute("""
+        SELECT scan_id, days_forward, hv_days, expiry, tickers_scanned,
+               tickers_failed, scan_time_seconds, created_at
+        FROM theta_scans
+        WHERE expiry = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+    """, [expiry]).fetchone()
+    if not row:
+        return None
+    return {
+        "scan_id": row[0], "days_forward": row[1], "hv_days": row[2],
+        "expiry": str(row[3]), "tickers_scanned": row[4], "tickers_failed": row[5],
+        "scan_time_seconds": row[6], "created_at": str(row[7]),
+    }
+
+
+def get_latest_theta_scan(days_forward: int | None = None) -> dict | None:
+    """Get the most recent theta scan metadata, optionally filtered by DTE."""
+    db = get_db()
+    if days_forward is not None:
+        row = db.execute("""
+            SELECT scan_id, days_forward, hv_days, expiry, tickers_scanned,
+                   tickers_failed, scan_time_seconds, created_at
+            FROM theta_scans
+            WHERE days_forward = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, [days_forward]).fetchone()
+    else:
+        row = db.execute("""
+            SELECT scan_id, days_forward, hv_days, expiry, tickers_scanned,
+                   tickers_failed, scan_time_seconds, created_at
+            FROM theta_scans
+            ORDER BY created_at DESC
+            LIMIT 1
+        """).fetchone()
+    if not row:
+        return None
+    return {
+        "scan_id": row[0], "days_forward": row[1], "hv_days": row[2],
+        "expiry": str(row[3]), "tickers_scanned": row[4], "tickers_failed": row[5],
+        "scan_time_seconds": row[6], "created_at": str(row[7]),
+    }
+
+
+def get_theta_results(scan_id: str) -> list[dict]:
+    """Get all theta results for a given scan."""
+    db = get_db()
+    df = db.execute("""
+        SELECT ticker, spot, expiry, call_strike, call_bid, call_ask, call_mid,
+               call_iv, put_strike, put_bid, put_ask, put_mid, put_iv, hv_20,
+               call_premium, put_premium, avg_premium, call_efficiency, put_efficiency,
+               beta, pct_change_5d
+        FROM theta_results
+        WHERE scan_id = ?
+        ORDER BY avg_premium DESC
+    """, [scan_id]).fetchdf()
+    # Convert any Timestamp/date columns to strings for JSON serialization
+    if "expiry" in df.columns:
+        df["expiry"] = df["expiry"].astype(str)
+    return df.to_dict(orient="records")
 
 
 def close_db():

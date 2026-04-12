@@ -16,6 +16,7 @@ from app.data.fetcher import (
     fetch_snapshot_for_screener,
     fetch_daily_bars,
     find_nearest_expiry_friday,
+    _third_friday,
 )
 from app.data.db import query_daily_closes
 from app.prediction_pipeline.black_scholes import call_value
@@ -105,6 +106,31 @@ def _solve_iv(price: float, spot: float, strike: float, t: float, r: float = 0.0
         return 0.0
 
 
+def _candidate_expiries(obs_date: date, days_forward: int) -> list[date]:
+    """Generate candidate expiries sorted by proximity to the target date.
+
+    Returns 3-4 monthly expiry candidates so we can fall back if the
+    preferred one has no data in the snapshot API.
+    """
+    target = obs_date + timedelta(days=days_forward)
+    candidates = []
+    for month_offset in range(-1, 4):
+        y = target.year
+        m = target.month + month_offset
+        if m < 1:
+            m += 12
+            y -= 1
+        elif m > 12:
+            m -= 12
+            y += 1
+        fri = _third_friday(y, m)
+        if fri >= obs_date:
+            candidates.append(fri)
+    # Sort by distance from target, preferring on-or-after
+    candidates.sort(key=lambda d: (0 if d >= target else 1, abs((d - target).days)))
+    return candidates
+
+
 def _find_atm(contracts: list[dict], spot: float) -> dict | None:
     """Find the contract closest to ATM with a valid price."""
     if not contracts:
@@ -122,6 +148,7 @@ def scan_ticker(
     spy_closes: list[float],
     expiry_date: date,
     hv_days: int = 20,
+    candidate_expiries: list[date] | None = None,
 ) -> ScreenerRow | None:
     """Scan a single ticker for theta play metrics."""
     try:
@@ -143,9 +170,18 @@ def scan_ticker(
             logger.warning("No spot price for %s", ticker)
             return None
 
-        # Fetch call and put snapshots
-        calls = fetch_snapshot_for_screener(client, ticker, expiry_date, "call")
-        puts = fetch_snapshot_for_screener(client, ticker, expiry_date, "put")
+        # Try candidate expiries until we find one with data
+        expiries_to_try = candidate_expiries or [expiry_date]
+        calls = []
+        puts = []
+        used_expiry = expiry_date
+        for exp in expiries_to_try:
+            calls = fetch_snapshot_for_screener(client, ticker, exp, "call")
+            if calls:
+                puts = fetch_snapshot_for_screener(client, ticker, exp, "put")
+                if puts:
+                    used_expiry = exp
+                    break
 
         if not calls or not puts:
             logger.warning("No snapshot data for %s", ticker)
@@ -212,7 +248,7 @@ def scan_ticker(
         return ScreenerRow(
             ticker=ticker,
             spot=round(spot, 2),
-            expiry=str(expiry_date),
+            expiry=str(used_expiry),
             call_strike=atm_call["strike"],
             call_bid=round(call_bid, 2),
             call_ask=round(call_ask, 2),
@@ -253,9 +289,10 @@ def scan_all(
     """
     client = get_client(api_key)
 
-    # Target expiry
+    # Target expiry + fallback candidates
     obs_date = date.today()
     expiry_date = find_nearest_expiry_friday(obs_date, days_forward)
+    candidate_expiries = _candidate_expiries(obs_date, days_forward)
 
     # SPY bars for beta — try DuckDB first
     spy_db = query_daily_closes("SPY", days=max(hv_days + 5, 30))
@@ -271,7 +308,7 @@ def scan_all(
         stage = f"Scanning {ticker} ({i + 1}/{len(tickers)})"
         progress = int(5 + (i / len(tickers)) * 90)
 
-        row = scan_ticker(client, ticker, spy_closes, expiry_date, hv_days)
+        row = scan_ticker(client, ticker, spy_closes, expiry_date, hv_days, candidate_expiries)
         if row:
             results.append(row)
         else:

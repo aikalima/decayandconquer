@@ -1,7 +1,6 @@
-import { useState } from "react";
-import ProgressBar from "../components/ProgressBar";
-import { fetchThetaPlaysStream } from "../api/client";
-import type { ThetaPlayRow, ThetaPlaysResponse } from "../api/client";
+import { useState, useEffect } from "react";
+import { fetchThetaPlays, fetchThetaExpiries } from "../api/client";
+import type { ThetaPlayRow, ThetaPlaysResponse, ThetaExpiry } from "../api/client";
 
 type Tab = "highest_premium" | "expensive_calls" | "expensive_puts";
 
@@ -11,38 +10,49 @@ const TABS: { key: Tab; label: string; description: string }[] = [
   { key: "expensive_puts", label: "Expensive Puts", description: "Best puts to sell. Priced expecting the underlying to move down more than it historically has." },
 ];
 
-const DTE_OPTIONS = [14, 30, 45, 60];
+function formatExpiryDate(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  const month = d.toLocaleString("en-US", { month: "long" });
+  const day = d.getDate();
+  const year = d.getFullYear();
+  const suffix = day === 1 || day === 21 || day === 31 ? "st"
+    : day === 2 || day === 22 ? "nd"
+    : day === 3 || day === 23 ? "rd" : "th";
+  return `${month} ${day}${suffix} ${year}`;
+}
 
 export default function ThetaPlaysPage() {
   const [results, setResults] = useState<ThetaPlaysResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [stage, setStage] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("highest_premium");
-  const [dte, setDte] = useState(30);
+  const [expiries, setExpiries] = useState<ThetaExpiry[]>([]);
+  const [selectedExpiry, setSelectedExpiry] = useState<string>("");
   const [sortCol, setSortCol] = useState<string>("avg_premium");
   const [sortAsc, setSortAsc] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
-  const handleScan = async () => {
+  // Load available expiries on mount
+  useEffect(() => {
+    fetchThetaExpiries().then((exps) => {
+      setExpiries(exps);
+      if (exps.length > 0) {
+        setSelectedExpiry(exps[0].expiry);
+      } else {
+        setLoading(false);
+      }
+    });
+  }, []);
+
+  // Load results when selected expiry changes
+  useEffect(() => {
+    if (!selectedExpiry) return;
     setLoading(true);
-    setError(null);
     setResults(null);
-    setProgress(0);
-    setStage("Starting scan...");
-
-    try {
-      const res = await fetchThetaPlaysStream("", dte, (event) => {
-        if (event.stage) setStage(event.stage);
-        setProgress(event.progress);
-      });
+    fetchThetaPlays(selectedExpiry).then((res) => {
       setResults(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Scan failed");
-    } finally {
       setLoading(false);
-    }
-  };
+    });
+  }, [selectedExpiry]);
 
   const rows = results ? results[activeTab] : [];
 
@@ -66,80 +76,60 @@ export default function ThetaPlaysPage() {
       {/* Header */}
       <div style={{ maxWidth: "70%" }}>
         <p style={{ margin: 0, fontSize: 13, color: "#888", lineHeight: 1.6 }}>
-          Scan the options market for overpriced premium. When implied volatility (IV) exceeds
-          historical volatility (HV), options are priced for bigger moves than the stock has
-          actually made. Sell these for theta decay.
+          Options with implied volatility (IV) higher than historical volatility (HV) are
+          overpriced relative to actual moves. Sell these for theta decay.
         </p>
       </div>
 
-      {/* Controls */}
+      {/* Expiry selector */}
       <div style={{
         background: "#1a1a2e",
         borderRadius: 8,
         padding: "12px 16px",
         display: "flex",
         alignItems: "center",
-        gap: 16,
+        gap: 10,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 12, color: "#888" }}>Expiry in:</span>
-          {DTE_OPTIONS.map((d) => (
-            <button
-              key={d}
-              onClick={() => setDte(d)}
-              style={{
-                padding: "4px 10px",
-                borderRadius: 4,
-                border: `1px solid ${dte === d ? "#6c63ff" : "#333"}`,
-                background: dte === d ? "#6c63ff" : "transparent",
-                color: dte === d ? "#fff" : "#888",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              {d}d
-            </button>
-          ))}
-        </div>
-
-        <button
-          onClick={handleScan}
-          disabled={loading}
-          style={{
-            padding: "8px 24px",
-            borderRadius: 6,
-            border: "none",
-            background: loading ? "#333" : "#6c63ff",
-            color: loading ? "#666" : "#fff",
-            cursor: loading ? "not-allowed" : "pointer",
-            fontSize: 14,
-            fontWeight: 600,
-            marginLeft: "auto",
-          }}
-        >
-          {loading ? "Scanning..." : "Scan Now"}
-        </button>
+        <span style={{ fontSize: 12, color: "#888" }}>Expiry:</span>
+        {expiries.length > 0 ? (
+          <select
+            value={selectedExpiry}
+            onChange={(e) => setSelectedExpiry(e.target.value)}
+            style={{
+              padding: "5px 10px",
+              borderRadius: 6,
+              border: "1px solid #333",
+              background: "#0f0f1a",
+              color: "#e0e0e0",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              outline: "none",
+            }}
+          >
+            {expiries.map((exp) => {
+              const days = Math.round((new Date(exp.expiry + "T00:00:00").getTime() - Date.now()) / 86400000);
+              return (
+                <option key={exp.expiry} value={exp.expiry}>
+                  {formatExpiryDate(exp.expiry)} ({days}d)
+                </option>
+              );
+            })}
+          </select>
+        ) : (
+          <span style={{ fontSize: 12, color: "#555" }}>No scans available</span>
+        )}
       </div>
 
-      {/* Progress */}
-      {loading && <ProgressBar progress={progress} stage={stage} />}
-
-      {error && (
-        <div style={{
-          background: "#2e1a1a",
-          border: "1px solid #5a2020",
-          borderRadius: 8,
-          padding: 12,
-          color: "#e74c3c",
-          fontSize: 13,
-        }}>
-          {error}
+      {/* Loading */}
+      {loading && (
+        <div style={{ textAlign: "center", padding: 40, color: "#555", fontSize: 13 }}>
+          Loading...
         </div>
       )}
 
       {/* Results */}
-      {results && (
+      {!loading && results && (
         <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16 }}>
           {/* Tabs */}
           <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
@@ -150,6 +140,7 @@ export default function ThetaPlaysPage() {
                   setActiveTab(tab.key);
                   setSortCol(tab.key === "expensive_calls" ? "call_premium" : tab.key === "expensive_puts" ? "put_premium" : "avg_premium");
                   setSortAsc(false);
+                  setShowAll(false);
                 }}
                 style={{
                   padding: "6px 14px",
@@ -169,9 +160,8 @@ export default function ThetaPlaysPage() {
 
           <p style={{ fontSize: 11, color: "#666", margin: "0 0 12px" }}>
             {TABS.find((t) => t.key === activeTab)?.description}
-            {" "}Expiry: {results.expiry}. Scanned {results.tickers_scanned} tickers in {results.scan_time_seconds}s.
-            {results.tickers_failed.length > 0 && (
-              <span style={{ color: "#e67e22" }}> {results.tickers_failed.length} failed: {results.tickers_failed.join(", ")}</span>
+            {results.scanned_at && (
+              <span style={{ color: "#555" }}> Last scan: {new Date(results.scanned_at).toLocaleString()}</span>
             )}
           </p>
 
@@ -183,6 +173,7 @@ export default function ThetaPlaysPage() {
                   {COLUMNS.map((col) => (
                     <th
                       key={col.key}
+                      title={col.tooltip}
                       onClick={() => handleSort(col.key)}
                       style={{
                         padding: "8px 6px",
@@ -198,13 +189,13 @@ export default function ThetaPlaysPage() {
                         userSelect: "none",
                       }}
                     >
-                      {col.label} {sortCol === col.key ? (sortAsc ? "\u25b2" : "\u25bc") : ""}
+                      {col.key === "hv_20" && results?.hv_days ? `HV (${results.hv_days}d)` : col.label} {sortCol === col.key ? (sortAsc ? "\u25b2" : "\u25bc") : ""}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((row, i) => (
+                {(showAll ? sorted : sorted.slice(0, 10)).map((row, i) => (
                   <tr key={row.ticker} style={{ background: i % 2 === 0 ? "transparent" : "#0f0f1a" }}>
                     {COLUMNS.map((col) => (
                       <td
@@ -232,6 +223,25 @@ export default function ThetaPlaysPage() {
                 )}
               </tbody>
             </table>
+            {sorted.length > 10 && (
+              <div style={{ textAlign: "center", marginTop: 12 }}>
+                <button
+                  onClick={() => setShowAll(!showAll)}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid #333",
+                    borderRadius: 6,
+                    padding: "6px 20px",
+                    color: "#6c63ff",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  {showAll ? "Show less" : `Show all ${sorted.length} results`}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -246,6 +256,7 @@ export default function ThetaPlaysPage() {
 interface Column {
   key: string;
   label: string;
+  tooltip: string;
   align?: "left" | "right" | "center";
   render: (row: ThetaPlayRow) => string;
   color?: (row: ThetaPlayRow) => string;
@@ -256,6 +267,7 @@ const COLUMNS: Column[] = [
   {
     key: "ticker",
     label: "Ticker",
+    tooltip: "Stock symbol",
     align: "left",
     render: (r) => r.ticker,
     color: () => "#fff",
@@ -264,43 +276,51 @@ const COLUMNS: Column[] = [
   {
     key: "spot",
     label: "Spot",
+    tooltip: "Current stock price (last close from options data)",
     render: (r) => `$${r.spot.toFixed(0)}`,
   },
   {
     key: "call_strike",
     label: "Call / Put",
+    tooltip: "ATM call and put strike prices nearest to spot",
     render: (r) => `$${r.call_strike.toFixed(0)} / $${r.put_strike.toFixed(0)}`,
     color: () => "#aaa",
   },
   {
     key: "pct_change_5d",
     label: "5d Change",
+    tooltip: "Stock price change over the last 5 trading days",
     render: (r) => `${r.pct_change_5d >= 0 ? "+" : ""}${r.pct_change_5d.toFixed(1)}%`,
     color: (r) => r.pct_change_5d > 0 ? "#2ecc71" : r.pct_change_5d < 0 ? "#e74c3c" : "#888",
   },
   {
     key: "call_mid",
     label: "Call $",
+    tooltip: "ATM call option mid price (average of bid and ask)",
     render: (r) => `$${r.call_mid.toFixed(2)}`,
   },
   {
     key: "put_mid",
     label: "Put $",
+    tooltip: "ATM put option mid price (average of bid and ask)",
     render: (r) => `$${r.put_mid.toFixed(2)}`,
   },
   {
     key: "call_iv",
     label: "IV",
+    tooltip: "Implied Volatility: the market's expected annualized move, derived from option prices",
     render: (r) => `${((r.call_iv + r.put_iv) / 2 * 100).toFixed(1)}%`,
   },
   {
     key: "hv_20",
     label: "HV",
+    tooltip: "Historical Volatility: the actual annualized move over the last 20 trading days",
     render: (r) => `${(r.hv_20 * 100).toFixed(1)}%`,
   },
   {
     key: "avg_premium",
     label: "Premium",
+    tooltip: "IV / HV ratio. Above 1.0 means options are priced for bigger moves than actually occurred. Higher = more overpriced = better to sell",
     render: (r) => `${r.avg_premium.toFixed(2)}x`,
     color: (r) => r.avg_premium >= 2.0 ? "#2ecc71" : r.avg_premium >= 1.5 ? "#a3d977" : r.avg_premium >= 1.0 ? "#ccc" : "#666",
     bold: (r) => r.avg_premium >= 1.5,
@@ -308,27 +328,21 @@ const COLUMNS: Column[] = [
   {
     key: "call_premium",
     label: "Call Prem",
+    tooltip: "Call IV / HV. High values mean call options are especially overpriced (sell calls)",
     render: (r) => `${r.call_premium.toFixed(2)}x`,
     color: (r) => r.call_premium >= 1.5 ? "#2ecc71" : "#ccc",
   },
   {
     key: "put_premium",
     label: "Put Prem",
+    tooltip: "Put IV / HV. High values mean put options are especially overpriced (sell puts)",
     render: (r) => `${r.put_premium.toFixed(2)}x`,
     color: (r) => r.put_premium >= 1.5 ? "#2ecc71" : "#ccc",
   },
   {
-    key: "call_efficiency",
-    label: "Efficiency",
-    render: (r) => `${((r.call_efficiency + r.put_efficiency) / 2).toFixed(0)}%`,
-    color: (r) => {
-      const avg = (r.call_efficiency + r.put_efficiency) / 2;
-      return avg >= 80 ? "#2ecc71" : avg >= 50 ? "#f1c40f" : "#e74c3c";
-    },
-  },
-  {
     key: "beta",
     label: "Beta",
+    tooltip: "Correlation to SPY. 1.0 = moves with the market. >1 = more volatile. <1 = less volatile. Negative = inverse",
     render: (r) => r.beta.toFixed(2),
     color: () => "#aaa",
   },

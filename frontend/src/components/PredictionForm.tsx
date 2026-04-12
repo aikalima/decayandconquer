@@ -85,20 +85,20 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
         alignItems: "center",
         gap: 16,
       }}>
-        <label style={{ fontSize: 16, color: "#ccc", fontWeight: 700 }}>Ticker</label>
+        <label style={{ fontSize: 12, color: "#888", fontWeight: 600 }}>Ticker</label>
         <input
           value={ticker}
           onChange={(e) => setTicker(e.target.value.toUpperCase())}
           style={{
-            padding: "10px 16px",
-            borderRadius: 8,
-            border: "2px solid #333",
+            padding: "6px 12px",
+            borderRadius: 6,
+            border: "1px solid #333",
             background: "#0f0f1a",
-            color: "#fff",
-            fontSize: 20,
-            fontWeight: 700,
-            width: 140,
-            letterSpacing: 1,
+            color: "#e0e0e0",
+            fontSize: 14,
+            fontWeight: 600,
+            width: 100,
+            letterSpacing: 0.5,
             textAlign: "center",
           }}
         />

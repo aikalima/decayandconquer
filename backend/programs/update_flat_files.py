@@ -11,16 +11,26 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 import time
 from datetime import date, timedelta
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from download_flat_files import get_s3_client, download_file, date_to_key
+# Load .env from project root
+_env_path = Path(__file__).parent.parent.parent / ".env"
+if _env_path.exists():
+    for line in _env_path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, val = line.split("=", 1)
+            os.environ.setdefault(key.strip(), val.strip().strip("'\""))
 
-FLAT_FILES_DIR = Path(__file__).parent / "app" / "data" / "flat_files"
+from programs.download_flat_files import get_s3_client, download_file, date_to_key
+
+FLAT_FILES_DIR = Path(__file__).parent.parent / "app" / "data" / "flat_files"
 
 
 def find_latest_in_db() -> date | None:
@@ -165,6 +175,14 @@ def main():
     new_files = [f for f in downloaded if f.exists()]
     if not new_files:
         print("No new files to import.")
+        return
+
+    # Check DB is writable before importing
+    from app.data.db import check_db_writable
+    ok, msg = check_db_writable()
+    if not ok:
+        print(f"\nERROR: {msg}")
+        print("Close the locking application and try again.")
         return
 
     print()
