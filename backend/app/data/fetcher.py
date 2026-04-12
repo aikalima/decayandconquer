@@ -96,7 +96,12 @@ def find_nearest_expiry_friday(obs_date: date, days_forward: int) -> date:
             delta -= 7
         return target + timedelta(days=delta)
 
-    # Pick the candidate closest to the target date
+    # Prefer the first expiry on or after the target date
+    # (so 30d and 45d don't collapse to the same expiry)
+    on_or_after = [c for c in candidates if c >= target]
+    if on_or_after:
+        return min(on_or_after)
+    # Fallback: closest candidate
     return min(candidates, key=lambda d: abs((d - target).days))
 
 
@@ -346,3 +351,105 @@ def fetch_options_chain(
         f"No options data found for {ticker} on {on_date} near expiry {expiry_date}. "
         f"Tried: {[str(c) for c in candidates]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Screener helpers (live snapshot with full fields)
+# ---------------------------------------------------------------------------
+
+def fetch_snapshot_for_screener(
+    client,
+    ticker: str,
+    expiry_date: date,
+    contract_type: str = "call",
+    rate_limit_sleep: float = DEFAULT_RATE_LIMIT_SLEEP,
+) -> list[dict]:
+    """Fetch full snapshot data for screener — IV, greeks, OI, bid/ask.
+
+    Returns list of dicts per contract with all fields needed for screening.
+    """
+    time.sleep(rate_limit_sleep)
+    rows = []
+    try:
+        for o in client.list_snapshot_options_chain(
+            ticker,
+            params={
+                "expiration_date.gte": str(expiry_date),
+                "expiration_date.lte": str(expiry_date),
+                "contract_type": contract_type,
+            },
+        ):
+            strike = getattr(o.details, "strike_price", None) if hasattr(o, "details") else None
+            if strike is None:
+                continue
+
+            bid = 0.0
+            ask = 0.0
+            last_price = 0.0
+            iv = 0.0
+            oi = 0
+            volume = 0
+            delta = 0.0
+            theta = 0.0
+            spot = 0.0
+
+            if hasattr(o, "last_quote") and o.last_quote:
+                bid = getattr(o.last_quote, "bid", 0.0) or 0.0
+                ask = getattr(o.last_quote, "ask", 0.0) or 0.0
+
+            if hasattr(o, "day") and o.day:
+                last_price = getattr(o.day, "close", 0.0) or 0.0
+                volume = getattr(o.day, "volume", 0) or 0
+
+            if last_price == 0.0 and hasattr(o, "last_trade") and o.last_trade:
+                last_price = getattr(o.last_trade, "price", 0.0) or 0.0
+
+            iv = getattr(o, "implied_volatility", 0.0) or 0.0
+            oi = getattr(o, "open_interest", 0) or 0
+
+            if hasattr(o, "greeks") and o.greeks:
+                delta = getattr(o.greeks, "delta", 0.0) or 0.0
+                theta = getattr(o.greeks, "theta", 0.0) or 0.0
+
+            if hasattr(o, "underlying_asset") and o.underlying_asset:
+                spot = getattr(o.underlying_asset, "price", 0.0) or 0.0
+
+            if last_price > 0 or (bid > 0 and ask > 0):
+                rows.append({
+                    "strike": strike,
+                    "bid": bid if bid > 0 else last_price,
+                    "ask": ask if ask > 0 else last_price,
+                    "last_price": last_price,
+                    "iv": iv,
+                    "open_interest": oi,
+                    "volume": volume,
+                    "delta": delta,
+                    "theta": theta,
+                    "spot": spot,
+                })
+    except Exception as e:
+        logger.warning("Screener snapshot failed for %s %s exp %s: %s", ticker, contract_type, expiry_date, e)
+
+    return sorted(rows, key=lambda r: r["strike"])
+
+
+def fetch_daily_bars(
+    client,
+    ticker: str,
+    days: int = 30,
+    rate_limit_sleep: float = DEFAULT_RATE_LIMIT_SLEEP,
+) -> list[float]:
+    """Fetch daily closing prices for the last N calendar days.
+
+    Returns a list of close prices (oldest first).
+    """
+    to_date = date.today()
+    from_date = to_date - timedelta(days=int(days * 1.5))  # pad for weekends/holidays
+    time.sleep(rate_limit_sleep)
+    try:
+        bars = list(client.list_aggs(ticker, 1, "day", str(from_date), str(to_date), limit=days + 10))
+        closes = [b.close for b in bars if b.close is not None]
+        return closes[-days:] if len(closes) > days else closes
+    except Exception as e:
+        logger.warning("fetch_daily_bars failed for %s: %s", ticker, e)
+        return []

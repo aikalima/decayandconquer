@@ -44,7 +44,7 @@ S3_SECRET_KEY = "rvyOh4B22MMK1q5HnnJL8Dh1bAKbCQ4A"
 # S3 path for options day aggregates
 OPTIONS_PREFIX = "us_options_opra/day_aggs_v1"
 
-DEFAULT_OUTPUT = Path(__file__).parent / "app" / "data" / "flat_files"
+DEFAULT_OUTPUT = Path(__file__).parent.parent / "app" / "data" / "flat_files"
 
 
 def get_s3_client():

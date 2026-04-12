@@ -8,8 +8,8 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Analyze", path: "/", icon: "📊" },
-  { label: "Predictions", path: "/predictions", icon: "🔮" },
+  { label: "Backtest & Predict", path: "/", icon: "📊" },
+  { label: "Theta Plays", path: "/theta-plays", icon: "🎯" },
 ];
 
 export default function Sidebar() {

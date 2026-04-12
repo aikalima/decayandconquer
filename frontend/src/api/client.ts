@@ -150,3 +150,130 @@ export async function fetchMarketContext(
   }
   return res.json();
 }
+
+// ---------------------------------------------------------------------------
+// Theta Plays Screener
+// ---------------------------------------------------------------------------
+
+export interface ThetaPlayRow {
+  ticker: string;
+  spot: number;
+  expiry: string;
+  call_strike: number;
+  call_bid: number;
+  call_ask: number;
+  call_mid: number;
+  call_iv: number;
+  put_strike: number;
+  put_bid: number;
+  put_ask: number;
+  put_mid: number;
+  put_iv: number;
+  hv_20: number;
+  call_premium: number;
+  put_premium: number;
+  avg_premium: number;
+  call_efficiency: number;
+  put_efficiency: number;
+  beta: number;
+  pct_change_5d: number;
+}
+
+export interface ThetaPlaysResponse {
+  highest_premium: ThetaPlayRow[];
+  expensive_calls: ThetaPlayRow[];
+  expensive_puts: ThetaPlayRow[];
+  scan_time_seconds: number;
+  tickers_scanned: number;
+  tickers_failed: string[];
+  expiry: string;
+  scan_id?: string;
+  scanned_at?: string;
+  hv_days?: number;
+  error?: string;
+}
+
+export async function fetchThetaPlays(expiry?: string): Promise<ThetaPlaysResponse | null> {
+  try {
+    const qs = expiry ? `?expiry=${expiry}` : "";
+    const res = await fetch(`${API_BASE}/theta-plays${qs}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.error) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export interface ThetaExpiry {
+  expiry: string;
+  last_scanned: string;
+  tickers_scanned: number;
+}
+
+export async function fetchThetaExpiries(): Promise<ThetaExpiry[]> {
+  try {
+    const res = await fetch(`${API_BASE}/theta-expiries`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.expiries || [];
+  } catch {
+    return [];
+  }
+}
+
+export interface ThetaPlaysProgressEvent {
+  stage?: string;
+  progress: number;
+  row?: ThetaPlayRow | null;
+  done?: boolean;
+  results?: ThetaPlaysResponse;
+  error?: string;
+}
+
+export async function fetchThetaPlaysStream(
+  tickers: string,
+  daysForward: number,
+  onProgress: (event: ThetaPlaysProgressEvent) => void,
+): Promise<ThetaPlaysResponse> {
+  const qs = new URLSearchParams({
+    tickers,
+    days_forward: String(daysForward),
+  });
+
+  const res = await fetch(`${API_BASE}/theta-plays-stream?${qs}`);
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status} ${res.statusText}`);
+  }
+
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResult: ThetaPlaysResponse | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      try {
+        const event: ThetaPlaysProgressEvent = JSON.parse(line.slice(6));
+        if (event.error) throw new Error(event.error);
+        onProgress(event);
+        if (event.done && event.results) finalResult = event.results;
+      } catch (e) {
+        if (e instanceof SyntaxError) continue;
+        throw e;
+      }
+    }
+  }
+
+  if (!finalResult) throw new Error("Stream ended without results");
+  return finalResult;
+}

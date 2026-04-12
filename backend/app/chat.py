@@ -23,28 +23,58 @@ from app.data.fetcher import find_nearest_expiry_friday
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a quantitative finance analyst assistant for the decay_core options analysis platform.
+SYSTEM_PROMPT = """You are a quantitative finance analyst assistant for the Decay And Conquer options analysis platform.
 
-You have access to a DuckDB database containing historical US options data (OHLC per contract per day)
-covering 2025-2026, with data for all US-listed tickers.
+You have access to a DuckDB database with three tables:
+
+1. **options** — 90M+ rows of historical US options OHLC data (2025-2026)
+   Columns: underlying, expiry, contract_type (C/P), strike, ticker, trade_date, open, high, low, close, volume, transactions
+
+   CRITICAL OPTIONS DATA RULES:
+   - The "close" column is the **option contract's per-share price**, NOT the stock price
+   - Each contract controls 100 shares, so contract cost = close × 100
+   - Example: close=$5.00 means one contract costs $500
+   - The "underlying" column is the stock ticker (e.g., MSTR). Use WHERE underlying='MSTR', NOT WHERE ticker='MSTR'
+   - The "ticker" column is the OCC symbol (e.g., 'O:MSTR250815C00250000')
+
+   HOW TO CALCULATE OPTIONS P&L:
+   1. Find the option's close price on the ENTRY date: entry_price = close on trade_date near purchase date
+   2. Find the SAME option's close price on the EXIT/expiry date: exit_price = close on trade_date near expiry
+   3. Both prices must be from the SAME option contract (same underlying, strike, expiry, contract_type)
+   4. Number of contracts = investment / (entry_price × 100)
+   5. Exit value = num_contracts × exit_price × 100
+   6. P&L = exit_value - investment
+
+   NEVER mix stock prices with option prices. Both entry and exit must come from the options table.
+
+2. **theta_scans** — pre-computed screener runs for theta plays
+   Columns: scan_id, days_forward, hv_days, expiry, tickers_scanned, tickers_failed, scan_time_seconds, created_at
+
+3. **theta_results** — per-ticker screener results (IV vs HV premium)
+   Columns: scan_id, ticker, spot, expiry, call_strike, call_bid, call_ask, call_mid, call_iv, put_strike, put_bid, put_ask, put_mid, put_iv, hv_20, call_premium, put_premium, avg_premium, call_efficiency, put_efficiency, beta, pct_change_5d
 
 You can:
-1. Run the prediction pipeline to extract risk-neutral price distributions from options data
-2. Query the database directly with SQL for analytics
+1. Run the prediction pipeline to extract risk-neutral price distributions
+2. Query all three tables with SQL
 3. Compare multiple tickers side by side
+4. Retrieve the latest theta plays screener results
 
-When a user asks about a stock's outlook, predicted price, or options analysis:
-- Use the run_prediction tool with appropriate dates
-- Explain the results in plain language (median predicted price, confidence interval, skew direction)
-- If the target date is in the past, comment on how accurate the prediction was
+When asked about theta plays or options to sell, use the get_theta_plays tool or query theta_results directly.
+When asked about a stock's outlook or prediction, use run_prediction with recent observation dates.
+- For obs_date_from, use a date 2-4 months before today to capture enough data
+- For obs_date_to, use the most recent trading date (today or yesterday)
+- The database has data up to approximately today's date
+When asked data questions, use query_database with SQL.
 
-When presenting numbers:
-- Always include the observation date, target date, and horizon
-- Mention the confidence interval and what it means
-- If there's a realized price, compute the prediction error and comment on accuracy
-- Highlight any notable skew (left skew = crash risk, right skew = upside bias)
+Today's date is {today}. The database covers 2025-01-02 through approximately today.
 
-Keep responses concise but informative. Use bullet points for key metrics."""
+Keep responses concise and well-formatted:
+- Use markdown bullet points (- or *) for lists, each on its own line. NEVER use the bullet character (•)
+- Use **bold** for important numbers
+- Use headers (## or ###) to separate sections
+- Always put a blank line before a list of bullet points
+- Don't use em dashes
+- Don't use markdown tables (they render poorly in the narrow chat panel)""".format(today=date.today().isoformat())
 
 
 # ---------------------------------------------------------------------------
@@ -74,9 +104,10 @@ TOOL_DEFS = [
     {
         "name": "query_database",
         "description": (
-            "Run a read-only SQL query against the options DuckDB database. "
-            "Table 'options': underlying, expiry, contract_type ('C'/'P'), strike, ticker, "
-            "trade_date, open, high, low, close, volume, transactions."
+            "Run a read-only SQL query against the DuckDB database. "
+            "Tables: 'options' (underlying, expiry, contract_type, strike, ticker, trade_date, open, high, low, close, volume, transactions), "
+            "'theta_scans' (scan_id, days_forward, hv_days, expiry, tickers_scanned, created_at), "
+            "'theta_results' (scan_id, ticker, spot, call_iv, put_iv, hv_20, call_premium, put_premium, avg_premium, beta, pct_change_5d)."
         ),
         "parameters": {
             "type": "object",
@@ -92,6 +123,20 @@ TOOL_DEFS = [
         "parameters": {
             "type": "object",
             "properties": {},
+        },
+    },
+    {
+        "name": "get_theta_plays",
+        "description": (
+            "Get the latest theta plays screener results: options with IV exceeding HV (overpriced premium, good to sell). "
+            "Returns top tickers ranked by premium ratio for a given DTE."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "days_forward": {"type": "integer", "description": "Target DTE: 14, 30, 45, or 60 (default 30)"},
+                "limit": {"type": "integer", "description": "Max results to return (default 10)"},
+            },
         },
     },
     {
@@ -133,6 +178,11 @@ def _run_prediction_tool(params: dict) -> dict:
     is_range = obs_from_d != obs_to_d
 
     try:
+        # Get spot price from daily closes (more reliable than options intrinsic)
+        from app.data.db import query_daily_closes
+        daily = query_daily_closes(ticker, 5)
+        spot_from_daily = daily[-1][1] if daily else None
+
         if is_range:
             db_expiry = find_best_expiry_in_range(ticker, obs_from_d, obs_to_d, expiry)
             if not db_expiry:
@@ -142,14 +192,14 @@ def _run_prediction_tool(params: dict) -> dict:
             for td, grp in all_rows.groupby("trade_date"):
                 chains[str(td)[:10]] = grp[["strike", "last_price", "bid", "ask"]].reset_index(drop=True)
             latest = max(chains.keys())
-            spot = float(chains[latest].iloc[0]["strike"] + chains[latest].iloc[0]["last_price"])
+            spot = spot_from_daily or float(chains[latest].iloc[0]["strike"] + chains[latest].iloc[0]["last_price"])
             result = predict_price_averaged(chains, spot, days_forward, db_expiry, rfr)
         else:
             db_expiry = find_best_expiry(ticker, obs_from_d, expiry)
             if not db_expiry:
                 return {"error": f"No options data in DB for {ticker} on {obs_from}"}
             chain = query_chain(ticker, obs_from_d, db_expiry)
-            spot = float(chain.iloc[0]["strike"] + chain.iloc[0]["last_price"])
+            spot = spot_from_daily or float(chain.iloc[0]["strike"] + chain.iloc[0]["last_price"])
             result = predict_price(chain, spot, days_forward, rfr)
 
         df = result.df
@@ -195,9 +245,20 @@ def _query_database_tool(params: dict) -> dict:
         truncated = len(result) > 100
         if truncated:
             result = result.head(100)
+        # Convert date/timestamp columns to strings for JSON serialization
+        for col in result.columns:
+            if result[col].dtype.kind in ("M", "m"):  # datetime or timedelta
+                result[col] = result[col].astype(str)
+        # Replace NaN/inf with None for JSON compliance
+        import math
+        rows = result.values.tolist()
+        for row in rows:
+            for j, v in enumerate(row):
+                if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                    row[j] = None
         return {
             "columns": list(result.columns),
-            "rows": result.values.tolist(),
+            "rows": rows,
             "row_count": len(result),
             "truncated": truncated,
         }
@@ -221,10 +282,29 @@ def _compare_tickers_tool(params: dict) -> dict:
     return {"comparisons": results}
 
 
+def _get_theta_plays_tool(params: dict) -> dict:
+    from app.data.db import get_latest_theta_scan, get_theta_results
+    days_forward = params.get("days_forward", 30)
+    limit = params.get("limit", 10)
+    scan = get_latest_theta_scan(days_forward)
+    if not scan:
+        return {"error": f"No theta scan results for {days_forward}-day DTE. Run run_theta_scan.py first."}
+    rows = get_theta_results(scan["scan_id"])
+    sorted_rows = sorted(rows, key=lambda r: r.get("avg_premium", 0), reverse=True)[:limit]
+    return {
+        "scan_id": scan["scan_id"],
+        "expiry": scan["expiry"],
+        "scanned_at": scan.get("created_at", ""),
+        "tickers_scanned": scan.get("tickers_scanned", 0),
+        "results": sorted_rows,
+    }
+
+
 TOOL_HANDLERS = {
     "run_prediction": _run_prediction_tool,
     "query_database": _query_database_tool,
     "get_database_stats": _get_database_stats_tool,
+    "get_theta_plays": _get_theta_plays_tool,
     "compare_tickers": _compare_tickers_tool,
 }
 
@@ -266,7 +346,7 @@ def _run_chat_google(messages: list[dict]) -> dict:
 
     tool_results_for_frontend = []
 
-    max_iterations = 5
+    max_iterations = 15
     for _ in range(max_iterations):
         response = client.models.generate_content(
             model="gemini-2.5-flash",
@@ -341,7 +421,7 @@ def _run_chat_anthropic(messages: list[dict]) -> dict:
     claude_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
     tool_results_for_frontend = []
 
-    max_iterations = 5
+    max_iterations = 15
     for _ in range(max_iterations):
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
