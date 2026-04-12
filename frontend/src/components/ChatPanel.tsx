@@ -103,7 +103,7 @@ export default function ChatPanel() {
         alignItems: "center",
         gap: 6,
       }}>
-        <span>💬</span> Ask Claude
+        <span>🧠</span> Ask Dacey
       </div>
 
       {/* Messages */}
@@ -128,6 +128,7 @@ export default function ChatPanel() {
               "What are the chances MSFT hits $400 by June 1st?",
               "Compare the downside risk of AAPL, TSLA, and META over the next 30 days",
               "What are the top theta plays right now?",
+              "What options strategy do you recommend for AMZN?",
               "I spent $1,000 on MSTR put options on May 5th 2025, $170 strike, expiring Aug 15th 2025. Did I profit?",
             ].map((q) => (
               <button
@@ -172,7 +173,7 @@ export default function ChatPanel() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-          placeholder="Ask about your data..."
+          placeholder="Pricing, predictions, strategies..."
           disabled={loading}
           style={{
             flex: 1,

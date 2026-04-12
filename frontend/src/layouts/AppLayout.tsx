@@ -53,7 +53,7 @@ export default function AppLayout() {
             transition: "right 0.2s ease",
             boxShadow: chatOpen ? "none" : "-2px 0 8px rgba(108,99,255,0.3)",
           }}
-          title={chatOpen ? "Close chat" : "Ask Claude"}
+          title={chatOpen ? "Close chat" : "Ask Dacey"}
         >
           {chatOpen ? "›" : "💬"}
         </button>
