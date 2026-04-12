@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 interface NavItem {
@@ -16,7 +15,6 @@ const NAV_ITEMS: NavItem[] = [
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <nav
@@ -74,86 +72,6 @@ export default function Sidebar() {
           </button>
         );
       })}
-
-      {/* Spacer */}
-      <div style={{ flex: 1 }} />
-
-      {/* Settings */}
-      <div style={{ position: "relative" }}>
-        {settingsOpen && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: 44,
-              left: 12,
-              background: "#1a1a2e",
-              border: "1px solid #2a2a4a",
-              borderRadius: 8,
-              padding: 12,
-              width: 180,
-              boxShadow: "0 -4px 16px rgba(0,0,0,0.4)",
-              zIndex: 50,
-            }}
-          >
-            <div style={{ fontSize: 11, color: "#888", marginBottom: 8, fontWeight: 600 }}>Settings</div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 12, color: "#ccc" }}>Theme</span>
-              <div style={{ display: "flex", gap: 4 }}>
-                <button
-                  style={{
-                    padding: "3px 8px",
-                    borderRadius: 4,
-                    border: "1px solid #6c63ff",
-                    background: "#6c63ff22",
-                    color: "#6c63ff",
-                    cursor: "pointer",
-                    fontSize: 10,
-                    fontWeight: 600,
-                  }}
-                  title="Current theme"
-                >
-                  Dark
-                </button>
-                <button
-                  style={{
-                    padding: "3px 8px",
-                    borderRadius: 4,
-                    border: "1px solid #333",
-                    background: "transparent",
-                    color: "#555",
-                    cursor: "not-allowed",
-                    fontSize: 10,
-                    fontWeight: 600,
-                  }}
-                  title="Coming soon"
-                >
-                  Light
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        <button
-          onClick={() => setSettingsOpen(!settingsOpen)}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "10px 20px",
-            border: "none",
-            background: settingsOpen ? "#2a2a4a" : "transparent",
-            color: settingsOpen ? "#fff" : "#666",
-            cursor: "pointer",
-            fontSize: 14,
-            textAlign: "left",
-            borderLeft: "3px solid transparent",
-            width: "100%",
-          }}
-        >
-          <span>⚙️</span>
-          <span>Settings</span>
-        </button>
-      </div>
     </nav>
   );
 }
