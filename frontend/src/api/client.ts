@@ -26,12 +26,14 @@ export type ChatProvider = "google" | "anthropic";
 
 export async function sendChatMessage(
   messages: ChatMessage[],
-  provider: ChatProvider = "google"
+  provider: ChatProvider = "google",
+  signal?: AbortSignal,
 ): Promise<ChatResponse> {
   const res = await fetch(`${API_BASE}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages, provider }),
+    signal,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
@@ -221,6 +223,90 @@ export async function fetchThetaExpiries(): Promise<ThetaExpiry[]> {
   } catch {
     return [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// Options Heat Map
+// ---------------------------------------------------------------------------
+
+export interface HeatMapCell {
+  strike: number;
+  expiry: string;
+  call_volume: number;
+  put_volume: number;
+  call_oi: number;
+  put_oi: number;
+  call_mid: number;
+  put_mid: number;
+  call_iv: number;
+  put_iv: number;
+  net_volume: number;
+  net_oi: number;
+  net_premium: number;
+}
+
+export interface HeatMapResponse {
+  ticker: string;
+  spot: number;
+  expiries: string[];
+  strikes: number[];
+  cells: HeatMapCell[];
+  fetch_time_seconds: number;
+  error?: string;
+}
+
+export interface HeatMapProgressEvent {
+  stage?: string;
+  progress: number;
+  done?: boolean;
+  result?: HeatMapResponse;
+  error?: string;
+}
+
+export async function fetchHeatMapStream(
+  ticker: string,
+  numExpiries: number,
+  onProgress: (event: HeatMapProgressEvent) => void,
+): Promise<HeatMapResponse> {
+  const qs = new URLSearchParams({
+    ticker,
+    num_expiries: String(numExpiries),
+  });
+
+  const res = await fetch(`${API_BASE}/heatmap-stream?${qs}`);
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status} ${res.statusText}`);
+  }
+
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResult: HeatMapResponse | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      try {
+        const event: HeatMapProgressEvent = JSON.parse(line.slice(6));
+        if (event.error) throw new Error(event.error);
+        onProgress(event);
+        if (event.done && event.result) finalResult = event.result;
+      } catch (e) {
+        if (e instanceof SyntaxError) continue;
+        throw e;
+      }
+    }
+  }
+
+  if (!finalResult) throw new Error("Stream ended without results");
+  return finalResult;
 }
 
 export interface ThetaPlaysProgressEvent {

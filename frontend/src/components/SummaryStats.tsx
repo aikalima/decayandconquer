@@ -125,12 +125,12 @@ export default function SummaryStats({ data, meta }: Props) {
             {isPrediction ? (
               <>
                 Given option prices from {meta.obs_date_from} to {meta.obs_date_to}, the
-                market predicts {meta.ticker} around <strong style={{ color: "#ccc" }}>${median.toFixed(0)}</strong> by {meta.target_date}.
+                market predicts {meta.ticker} around <strong style={{ color: "#2ecc71" }}>${median.toFixed(0)}</strong> by {meta.target_date}.
                 {" "}The current price is <strong style={{ color: "#ccc" }}>${meta.spot.toFixed(2)}</strong>.
               </>
             ) : (
               <>
-                Predicted <strong style={{ color: "#ccc" }}>${median.toFixed(0)}</strong>,
+                Predicted <strong style={{ color: "#2ecc71" }}>${median.toFixed(0)}</strong>,
                 actual was <strong style={{ color: "#2ecc71" }}>${meta.realized_price!.toFixed(2)}</strong>.
                 {badge && (
                   <span style={{ color: "#888" }}> {badge.explanation}</span>

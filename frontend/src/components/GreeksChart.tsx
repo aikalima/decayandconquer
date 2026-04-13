@@ -104,6 +104,7 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
               display: true,
               labels: { color: "#888", font: { size: 10 } },
               position: "top",
+              onClick: () => {},
             },
             tooltip: {
               callbacks: {

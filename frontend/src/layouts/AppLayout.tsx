@@ -4,8 +4,20 @@ import Header from "./Header";
 import Sidebar from "./Sidebar";
 import ChatPanel from "../components/ChatPanel";
 
+function getChatPref(): boolean {
+  const v = localStorage.getItem("dacey_open");
+  if (v === null) return true; // default open on first visit
+  return v === "1";
+}
+
 export default function AppLayout() {
-  const [chatOpen, setChatOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(getChatPref);
+
+  const toggleChat = () => {
+    const next = !chatOpen;
+    setChatOpen(next);
+    localStorage.setItem("dacey_open", next ? "1" : "0");
+  };
 
   return (
     <div
@@ -36,7 +48,7 @@ export default function AppLayout() {
 
         {/* Chat toggle button */}
         <button
-          onClick={() => setChatOpen(!chatOpen)}
+          onClick={toggleChat}
           style={{
             position: "fixed",
             right: chatOpen ? 400 : 0,
