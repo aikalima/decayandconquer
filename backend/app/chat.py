@@ -421,9 +421,22 @@ def _run_chat_anthropic(messages: list[dict]) -> dict:
     claude_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
     tool_results_for_frontend = []
 
+    def _call_anthropic(**kwargs):
+        """Call Anthropic API with retry on 529 (overloaded)."""
+        import time as _time
+        for attempt in range(5):
+            try:
+                return client.messages.create(**kwargs)
+            except anthropic.APIStatusError as e:
+                if e.status_code == 529 and attempt < 4:
+                    logger.warning("Anthropic 529 overloaded, retrying in %ds (attempt %d/5)", 3 * (attempt + 1), attempt + 1)
+                    _time.sleep(3 * (attempt + 1))
+                    continue
+                raise
+
     max_iterations = 15
     for _ in range(max_iterations):
-        response = client.messages.create(
+        response = _call_anthropic(
             model="claude-sonnet-4-20250514",
             max_tokens=4096,
             system=SYSTEM_PROMPT,

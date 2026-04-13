@@ -552,3 +552,31 @@ async def theta_plays_stream(
             yield _sse({"error": str(e)})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.get("/heatmap-stream")
+async def heatmap_stream(
+    ticker: str = "SPY",
+    num_expiries: int = 6,
+    strike_range: float = 0.15,
+):
+    """Generate options heat map data with SSE progress."""
+    from app.heatmap import generate_heatmap
+
+    async def generate() -> AsyncGenerator[str, None]:
+        import time
+        start = time.time()
+        try:
+            for item in generate_heatmap(ticker.upper(), num_expiries, strike_range):
+                if isinstance(item, dict):
+                    if "error" not in item:
+                        item["fetch_time_seconds"] = round(time.time() - start, 1)
+                    yield _sse({"done": True, "progress": 100, "result": item})
+                else:
+                    stage, progress = item
+                    yield _sse({"stage": stage, "progress": progress})
+        except Exception as e:
+            logger.error("heatmap-stream failed: %s", e)
+            yield _sse({"error": str(e)})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

@@ -5,6 +5,7 @@ import PdfChart from "../components/PdfChart";
 import CdfChart from "../components/CdfChart";
 import IvSmileChart from "../components/IvSmileChart";
 import GreeksChart from "../components/GreeksChart";
+import HeatMapSection from "../components/HeatMapSection";
 import MarketContext from "../components/MarketContext";
 import SummaryStats from "../components/SummaryStats";
 import ProgressBar from "../components/ProgressBar";
@@ -48,7 +49,7 @@ export default function BacktestPage() {
     setIvSmile(null);
     setGreeks(null);
     setProgress(0);
-    setStage("Starting...");
+    setStage("Working...");
 
     // Fetch market context in parallel (non-blocking)
     setMarketLoading(true);
@@ -107,10 +108,16 @@ export default function BacktestPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <Tutorial />
-      <div>
-        <p style={{ margin: 0, fontSize: 13, color: "#888", lineHeight: 1.6, maxWidth: "60%" }}>
-          Predict where a stock is headed by reverse-engineering probability distributions
-          from 90 million+ options data points.
+      <div style={{
+        borderLeft: "3px solid #6c63ff",
+        padding: "12px 16px",
+        background: "#6c63ff08",
+        borderRadius: "0 8px 8px 0",
+        maxWidth: "100%",
+      }}>
+        <p style={{ margin: 0, fontSize: 14, color: "#aaa", lineHeight: 1.7 }}>
+          <strong style={{ color: "#ccc" }}>Predict where a stock is headed</strong> by
+          reverse-engineering probability distributions from 90 million+ options data points.
           {" "}
           <span
             onClick={() => setShowExplainer(true)}
@@ -182,6 +189,8 @@ export default function BacktestPage() {
               <GreeksChart greeks={greeks} spot={meta.spot} />
             )}
           </div>
+
+          <HeatMapSection ticker={meta.ticker} />
         </>
       )}
       {showExplainer && <ExplainerModal onClose={() => setShowExplainer(false)} />}

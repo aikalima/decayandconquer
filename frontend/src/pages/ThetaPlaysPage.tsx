@@ -74,10 +74,17 @@ export default function ThetaPlaysPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Header */}
-      <div style={{ maxWidth: "70%" }}>
-        <p style={{ margin: 0, fontSize: 13, color: "#888", lineHeight: 1.6 }}>
-          Options with implied volatility (IV) higher than historical volatility (HV) are
-          overpriced relative to actual moves. Sell these for theta decay.
+      <div style={{
+        borderLeft: "3px solid #6c63ff",
+        padding: "12px 16px",
+        background: "#6c63ff08",
+        borderRadius: "0 8px 8px 0",
+        maxWidth: "70%",
+      }}>
+        <p style={{ margin: 0, fontSize: 14, color: "#aaa", lineHeight: 1.7 }}>
+          Options with implied volatility (IV) higher than historical volatility (HV)
+          are overpriced relative to actual moves.
+          {" "}<strong style={{ color: "#ccc" }}>Sell these for theta decay.</strong>
         </p>
       </div>
 
