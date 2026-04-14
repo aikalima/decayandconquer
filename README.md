@@ -222,4 +222,106 @@ decay_core/
       components/            # Charts, forms, timeline, stats, market context
       api/                   # Backend API client
     package.json
+  terraform/
+    main.tf                    # Terraform provider config
+    variables.tf               # Input variables
+    network.tf                 # VPC, firewall, static IP
+    compute.tf                 # GCE VM + data disk
+    secrets.tf                 # Secret Manager for API keys
+    outputs.tf                 # IP, SSH command
+    startup.sh                 # VM bootstrap script
+    scripts/run-daily-jobs.sh  # Cron wrapper for flat files + theta scans
 ```
+
+## GCP Deployment
+
+Deploy the app to a single GCE VM (~$31/mo) using Terraform. The VM runs nginx (frontend + API proxy), uvicorn (FastAPI backend), and daily cron jobs for data updates.
+
+### Prerequisites
+
+- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
+- [gcloud CLI](https://cloud.google.com/sdk/docs/install) authenticated
+- A GCP project with billing enabled
+- SSH key pair (default: `~/.ssh/id_ed25519`)
+
+### Deploy
+
+```bash
+cd terraform
+
+# 1. Configure variables
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your project ID, API keys, etc.
+
+# 2. Initialize and apply
+terraform init
+terraform plan
+terraform apply
+
+# 3. Transfer DuckDB to the VM (5.7GB, takes a few minutes)
+gcloud compute scp backend/app/data/options.duckdb \
+  decay-core:/data/decay/db/options.duckdb \
+  --zone=us-east4-c
+
+# 4. Verify
+curl http://$(terraform output -raw external_ip)/ping
+```
+
+### Post-Deploy
+
+```bash
+# SSH into the VM
+ssh decay@$(terraform output -raw external_ip)
+
+# Check service status
+systemctl status decay-api
+curl localhost:6173/ping
+
+# View logs
+tail -f /var/log/decay/api.log
+tail -f /var/log/decay/cron.log
+
+# Set up HTTPS (if domain_name is configured)
+sudo certbot --nginx -d yourdomain.com
+```
+
+### Redeploy Code Updates
+
+```bash
+ssh decay@$(terraform output -raw external_ip)
+cd /opt/decay_core
+git pull
+cd frontend && npm run build
+sudo systemctl restart decay-api
+```
+
+### Daily Scheduled Jobs
+
+The cron runs at **9:30 UTC (5:30 AM ET)** on weekdays:
+
+1. Stops the API (~10 min downtime)
+2. Downloads and imports new flat files
+3. Runs theta scans for 3 expiry windows (100 tickers each)
+4. Restarts the API
+
+Logs: `/var/log/decay/cron.log`
+
+### Cost Estimate
+
+| Resource | Monthly Cost |
+|----------|-------------|
+| e2-medium VM (sustained use) | $24.46 |
+| 20GB boot disk | $1.70 |
+| 30GB SSD data disk | $5.10 |
+| Static IP | $0 |
+| Secret Manager | $0.06 |
+| **Total** | **~$31/mo** |
+
+### Destroy
+
+```bash
+cd terraform
+terraform destroy
+```
+
+**Note:** The data disk is preserved by default. Delete it manually if you want to remove all data.

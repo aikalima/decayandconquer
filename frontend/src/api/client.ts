@@ -1,6 +1,6 @@
 import type { PredictionParams, PredictionResponse } from "../types/prediction";
 
-const API_BASE = "http://localhost:6173";
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 // ---------------------------------------------------------------------------
 // Chat
