@@ -23,6 +23,8 @@ from app.data.fetcher import find_nearest_expiry_friday
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
+
 SYSTEM_PROMPT = """You are a quantitative finance analyst assistant for the Decay And Conquer options analysis platform.
 
 You have access to a DuckDB database with three tables:
@@ -407,6 +409,7 @@ def _run_chat_anthropic(messages: list[dict]) -> dict:
     if not key:
         return {"response": "No ANTHROPIC_API_KEY set.", "tool_results": []}
 
+    model = os.environ.get("ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL)
     client = anthropic.Anthropic(api_key=key)
 
     # Convert tool defs to Anthropic format
@@ -436,13 +439,24 @@ def _run_chat_anthropic(messages: list[dict]) -> dict:
 
     max_iterations = 15
     for _ in range(max_iterations):
-        response = _call_anthropic(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4096,
-            system=SYSTEM_PROMPT,
-            tools=anthropic_tools,
-            messages=claude_messages,
-        )
+        try:
+            response = _call_anthropic(
+                model=model,
+                max_tokens=4096,
+                system=SYSTEM_PROMPT,
+                tools=anthropic_tools,
+                messages=claude_messages,
+            )
+        except anthropic.NotFoundError:
+            logger.exception("Anthropic model not found: %s", model)
+            return {
+                "response": (
+                    f"Anthropic model `{model}` was not found. "
+                    "Set `ANTHROPIC_MODEL` to an active Claude API model, "
+                    f"for example `{DEFAULT_ANTHROPIC_MODEL}`."
+                ),
+                "tool_results": tool_results_for_frontend,
+            }
 
         if response.stop_reason == "tool_use":
             tool_use_blocks = [b for b in response.content if b.type == "tool_use"]

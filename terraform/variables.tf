@@ -39,6 +39,12 @@ variable "anthropic_api_key" {
   sensitive   = true
 }
 
+variable "anthropic_model" {
+  description = "Anthropic Claude model ID for Dacey chat"
+  type        = string
+  default     = "claude-sonnet-4-6"
+}
+
 variable "google_api_key" {
   description = "Google API key for Gemini (market context)"
   type        = string

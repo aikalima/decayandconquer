@@ -11,6 +11,7 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import type { PredictionData } from "../types/prediction";
+import { useChartTheme } from "../themeContext";
 
 ChartJS.register(
   LineElement,
@@ -48,6 +49,7 @@ function interpCdf(target: number, cdf: number[], prices: number[]): number {
 }
 
 export default React.memo(function CdfChart({ data, spot, realized, predicted, ciLevel = 90 }: Props) {
+  const colors = useChartTheme();
   const step = Math.max(1, Math.floor(data.prices.length / 500));
   const prices = data.prices.filter((_, i) => i % step === 0);
   const cdf = data.cdf.filter((_, i) => i % step === 0);
@@ -57,11 +59,11 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
   const pHigh = interpCdf(1 - tailPct, data.cdf, data.prices);
 
   return (
-    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16, minHeight: 300 }}>
-      <h3 style={{ margin: "0 0 4px", fontSize: 15, color: "#ccc" }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 18, minHeight: 320, boxShadow: "var(--shadow-soft)" }}>
+      <h3 className="dashboard-section-title" style={{ marginBottom: 4 }}>
         Price Probability
       </h3>
-      <p style={{ margin: "0 0 12px", fontSize: 11, color: "#666" }}>
+      <p className="dashboard-caption" style={{ margin: "0 0 14px" }}>
         The probability of the price ending up below each level. Read off any price on the
         x-axis to see the chance it stays under that value.
       </p>
@@ -72,7 +74,7 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
             {
               label: "CDF",
               data: cdf,
-              borderColor: "#e67e22",
+              borderColor: colors.orange,
               pointRadius: 0,
               borderWidth: 2,
               tension: 0.3,
@@ -94,19 +96,20 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
           scales: {
             x: {
               type: "category",
-              title: { display: true, text: "Predicted Price ($)", color: "#888" },
-              ticks: { color: "#666", maxTicksLimit: 10 },
-              grid: { color: "#222" },
+              title: { display: true, text: "Predicted Price ($)", color: colors.muted, font: { size: 12, weight: 600 } },
+              ticks: { color: colors.subtle, maxTicksLimit: 10, font: { size: 12 } },
+              grid: { color: colors.grid },
             },
             y: {
               min: 0,
               max: 1,
-              title: { display: true, text: "P(Price < x)", color: "#888" },
+              title: { display: true, text: "P(Price < x)", color: colors.muted, font: { size: 12, weight: 600 } },
               ticks: {
-                color: "#666",
+                color: colors.subtle,
+                font: { size: 12 },
                 callback: (v) => `${(Number(v) * 100).toFixed(0)}%`,
               },
-              grid: { color: "#222" },
+              grid: { color: colors.grid },
             },
           },
           animation: {
@@ -125,11 +128,11 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
               const pHighX = xScale.getPixelForValue(findIdx(prices, pHigh));
               const yLow = yScale.getPixelForValue(tailPct);
               const yHigh = yScale.getPixelForValue(1 - tailPct);
-              ctx.fillStyle = "rgba(168, 130, 255, 0.1)";
+              ctx.fillStyle = colors.fillSoft;
               ctx.fillRect(pLowX, yTop, pHighX - pLowX, yBottom - yTop);
 
               // Horizontal lines at CI bounds
-              ctx.strokeStyle = "rgba(168, 130, 255, 0.35)";
+              ctx.strokeStyle = colors.accent;
               ctx.lineWidth = 1;
               ctx.setLineDash([3, 3]);
               ctx.beginPath();
@@ -152,22 +155,22 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
               ctx.stroke();
 
               // CI label
-              ctx.fillStyle = "rgba(168, 130, 255, 0.7)";
-              ctx.font = "10px sans-serif";
+              ctx.fillStyle = colors.accent;
+              ctx.font = "12px sans-serif";
               ctx.setLineDash([]);
               ctx.fillText(`${ciLevel}% CI: $${pLow.toFixed(0)}–$${pHigh.toFixed(0)}`, pLowX + 4, yBottom - 6);
 
               // Spot price (red dashed)
               const spotX = xScale.getPixelForValue(findIdx(prices, spot));
-              ctx.strokeStyle = "#e74c3c";
+              ctx.strokeStyle = colors.danger;
               ctx.lineWidth = 1.5;
               ctx.setLineDash([6, 4]);
               ctx.beginPath();
               ctx.moveTo(spotX, yTop);
               ctx.lineTo(spotX, yBottom);
               ctx.stroke();
-              ctx.fillStyle = "#e74c3c";
-              ctx.font = "11px sans-serif";
+              ctx.fillStyle = colors.danger;
+              ctx.font = "12px sans-serif";
               ctx.fillText(`Spot $${spot.toFixed(0)}`, spotX + 4, yTop + 14);
 
               // Predicted median (green dashed)
@@ -177,7 +180,7 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
                 const predCdf = cdf[predIdx] ?? 0.5;
                 const predY = yScale.getPixelForValue(predCdf);
 
-                ctx.strokeStyle = "#2ecc71";
+                ctx.strokeStyle = colors.success;
                 ctx.lineWidth = 1.5;
                 ctx.setLineDash([4, 3]);
                 ctx.beginPath();
@@ -191,7 +194,7 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
                 ctx.lineTo(predX, predY);
                 ctx.stroke();
 
-                ctx.fillStyle = "#2ecc71";
+                ctx.fillStyle = colors.success;
                 ctx.setLineDash([]);
                 ctx.fillText(
                   `Predicted $${predicted.toFixed(0)} (${(predCdf * 100).toFixed(0)}%)`,
@@ -207,7 +210,7 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
                 const cdfVal = cdf[realIdx] ?? 0;
                 const realY = yScale.getPixelForValue(cdfVal);
 
-                ctx.strokeStyle = "#00d2ff";
+                ctx.strokeStyle = colors.cyan;
                 ctx.lineWidth = 2;
                 ctx.setLineDash([]);
                 ctx.beginPath();
@@ -222,7 +225,7 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
                 ctx.lineTo(realX, realY);
                 ctx.stroke();
 
-                ctx.fillStyle = "#00d2ff";
+                ctx.fillStyle = colors.cyan;
                 ctx.setLineDash([]);
                 ctx.fillText(
                   `Actual $${realized.toFixed(0)} (${(cdfVal * 100).toFixed(0)}%)`,

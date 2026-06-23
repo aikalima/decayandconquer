@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import Tutorial, { startTutorial } from "../components/Tutorial";
+import Tutorial from "../components/Tutorial";
+import { startTutorial } from "../components/tutorialController";
 import PredictionForm, { DEFAULTS } from "../components/PredictionForm";
 import PdfChart from "../components/PdfChart";
 import CdfChart from "../components/CdfChart";
@@ -99,40 +100,34 @@ export default function BacktestPage() {
       solver: "brent",
       kernel_smooth: false,
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const median = data ? computeMedian(data) : 0;
   const isPrediction = meta ? !meta.realized_price : false;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <Tutorial />
       <div style={{
-        borderLeft: "3px solid #6c63ff",
-        padding: "12px 16px",
-        background: "#6c63ff08",
+        borderLeft: "4px solid var(--accent)",
+        padding: "22px 24px",
+        background: "var(--accent-soft)",
+        border: "1px solid var(--accent-border)",
         borderRadius: "0 8px 8px 0",
         maxWidth: "100%",
       }}>
-        <p style={{ margin: 0, fontSize: 14, color: "#aaa", lineHeight: 1.7 }}>
-          <strong style={{ color: "#ccc" }}>Predict where a stock is headed</strong> by
-          reverse-engineering probability distributions from 90 million+ options data points.
+        <h1 style={{ margin: "0 0 8px", fontSize: 30, lineHeight: 1.18, color: "var(--text)", letterSpacing: 0 }}>
+          Predict where a stock is headed based on option prices
+        </h1>
+        <p style={{ margin: 0, fontSize: 17, color: "var(--text-soft)", lineHeight: 1.6, maxWidth: 880 }}>
+          Decode the market's implied odds from 90 million+ options data points, then see the upside,
+          downside, and timing behind any price target.
           {" "}
           <span
             onClick={() => setShowExplainer(true)}
-            style={{ color: "#2ecc71", cursor: "pointer", fontWeight: 700, fontSize: 13 }}
+            style={{ color: "var(--success)", cursor: "pointer", fontWeight: 800, marginLeft: 8 }}
           >
             Explain how it works
-          </span>
-          <br />
-          Set a target in the past to backtest against the actual price,
-          or set a future target to predict.
-          {" "}
-          <span
-            onClick={startTutorial}
-            style={{ color: "#f1c40f", cursor: "pointer", fontWeight: 600 }}
-          >
-            Show me how
           </span>
         </p>
       </div>
@@ -143,6 +138,7 @@ export default function BacktestPage() {
         events={marketEvents}
         hoveredEventIndex={hoveredEventIndex}
         onEventHover={setHoveredEventIndex}
+        onStartTutorial={startTutorial}
       />
 
       {loading && <ProgressBar progress={progress} stage={stage} />}
@@ -150,12 +146,12 @@ export default function BacktestPage() {
       {error && (
         <div
           style={{
-            background: "#2e1a1a",
-            border: "1px solid #5a2020",
+            background: "var(--danger-soft)",
+            border: "1px solid var(--danger)",
             borderRadius: 8,
-            padding: 12,
-            color: "#e74c3c",
-            fontSize: 13,
+            padding: 14,
+            color: "var(--danger)",
+            fontSize: 14,
           }}
         >
           {error}
@@ -164,7 +160,7 @@ export default function BacktestPage() {
 
       {data && meta && (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "stretch" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 20, alignItems: "stretch" }}>
             <SummaryStats data={data} meta={meta} />
             <MarketContext
               events={marketEvents}
@@ -175,12 +171,12 @@ export default function BacktestPage() {
             />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 20 }}>
             <PdfChart key={`pdf-${meta.obs_date}-${meta.target_date}-${ciLevel}`} data={data} spot={meta.spot} realized={isPrediction ? undefined : meta.realized_price} predicted={median} ciLevel={ciLevel} onCiLevelChange={setCiLevel} />
             <CdfChart key={`cdf-${meta.obs_date}-${meta.target_date}-${ciLevel}`} data={data} spot={meta.spot} realized={isPrediction ? undefined : meta.realized_price} predicted={median} ciLevel={ciLevel} />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 20 }}>
             {ivSmile && (
               <IvSmileChart ivSmile={ivSmile} spot={meta.spot} />
             )}
@@ -205,7 +201,7 @@ function ExplainerModal({ onClose }: { onClose: () => void }) {
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(0,0,0,0.7)",
+          background: "rgba(0,0,0,0.58)",
           zIndex: 10000,
         }}
       />
@@ -215,26 +211,26 @@ function ExplainerModal({ onClose }: { onClose: () => void }) {
           top: "50%",
           left: "50%",
           transform: "translate(-50%, -50%)",
-          background: "#12122a",
-          border: "1px solid #2a2a4a",
-          borderRadius: 16,
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
           padding: "32px 36px",
           maxWidth: 640,
           width: "90vw",
           maxHeight: "80vh",
           overflowY: "auto",
           zIndex: 10001,
-          boxShadow: "0 16px 64px rgba(0,0,0,0.8)",
+          boxShadow: "var(--shadow)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h2 style={{ margin: 0, fontSize: 20, color: "#fff" }}>How It Works</h2>
+          <h2 style={{ margin: 0, fontSize: 22, color: "var(--text)" }}>How It Works</h2>
           <button
             onClick={onClose}
             style={{
               background: "transparent",
               border: "none",
-              color: "#666",
+              color: "var(--muted)",
               fontSize: 22,
               cursor: "pointer",
               padding: "0 4px",
@@ -244,7 +240,7 @@ function ExplainerModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 20, fontSize: 14, color: "#ccc", lineHeight: 1.7 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, fontSize: 15, color: "var(--text-soft)", lineHeight: 1.7 }}>
           <Section title="The Idea">
             Option prices encode the market's collective expectation of where a stock will be
             on a future date. This tool reverses the Black-Scholes pricing model to extract
@@ -264,19 +260,19 @@ function ExplainerModal({ onClose }: { onClose: () => void }) {
           <Section title="Why It's Useful">
             <ul style={{ margin: "6px 0 0 0", paddingLeft: 18 }}>
               <li style={{ marginBottom: 6 }}>
-                <strong style={{ color: "#fff" }}>See the full picture</strong>: not just a
+                <strong style={{ color: "var(--text)" }}>See the full picture</strong>: not just a
                 point estimate, but the entire range of outcomes the market is pricing in.
               </li>
               <li style={{ marginBottom: 6 }}>
-                <strong style={{ color: "#fff" }}>Quantify tail risk</strong>: understand the
+                <strong style={{ color: "var(--text)" }}>Quantify tail risk</strong>: understand the
                 probability of extreme moves that simple models miss.
               </li>
               <li style={{ marginBottom: 6 }}>
-                <strong style={{ color: "#fff" }}>Backtest accuracy</strong>: set a past target
+                <strong style={{ color: "var(--text)" }}>Backtest accuracy</strong>: set a past target
                 date and compare the predicted distribution against what actually happened.
               </li>
               <li>
-                <strong style={{ color: "#fff" }}>Market consensus</strong>: this reflects the
+                <strong style={{ color: "var(--text)" }}>Market consensus</strong>: this reflects the
                 aggregate view of all options traders, not a single analyst's opinion.
               </li>
             </ul>
@@ -298,10 +294,10 @@ function ExplainerModal({ onClose }: { onClose: () => void }) {
             padding: "10px 28px",
             borderRadius: 8,
             border: "none",
-            background: "#2ecc71",
-            color: "#000",
+            background: "var(--success)",
+            color: "var(--text-on-accent)",
             cursor: "pointer",
-            fontSize: 14,
+            fontSize: 15,
             fontWeight: 700,
             display: "block",
             marginLeft: "auto",
@@ -317,7 +313,7 @@ function ExplainerModal({ onClose }: { onClose: () => void }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 style={{ margin: "0 0 6px", fontSize: 15, color: "#2ecc71", fontWeight: 700 }}>{title}</h3>
+      <h3 style={{ margin: "0 0 6px", fontSize: 16, color: "var(--success)", fontWeight: 800 }}>{title}</h3>
       <div>{children}</div>
     </div>
   );

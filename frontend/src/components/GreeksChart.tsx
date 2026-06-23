@@ -10,6 +10,7 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import type { Greeks } from "../types/prediction";
+import { useChartTheme } from "../themeContext";
 
 ChartJS.register(
   LineElement,
@@ -33,6 +34,7 @@ function findIdx(prices: number[], target: number): number {
 }
 
 export default React.memo(function GreeksChart({ greeks, spot }: Props) {
+  const colors = useChartTheme();
   // Downsample to ~500 points
   const step = Math.max(1, Math.floor(greeks.strikes.length / 500));
   const strikes = greeks.strikes.filter((_, i) => i % step === 0);
@@ -42,11 +44,11 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
   const vega = greeks.vega.filter((_, i) => i % step === 0);
 
   return (
-    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16, minHeight: 300 }}>
-      <h3 style={{ margin: "0 0 4px", fontSize: 15, color: "#ccc" }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 18, minHeight: 320, boxShadow: "var(--shadow-soft)" }}>
+      <h3 className="dashboard-section-title" style={{ marginBottom: 4 }}>
         Option Greeks
       </h3>
-      <p style={{ margin: "0 0 12px", fontSize: 11, color: "#666" }}>
+      <p className="dashboard-caption" style={{ margin: "0 0 14px" }}>
         Sensitivity of option prices to underlying factors across strikes.
         Delta measures directional exposure, gamma its rate of change,
         theta the daily time decay, and vega the sensitivity to implied volatility.
@@ -58,7 +60,7 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
             {
               label: "Delta",
               data: delta,
-              borderColor: "#3498db",
+              borderColor: colors.blue,
               pointRadius: 0,
               borderWidth: 2,
               tension: 0.3,
@@ -67,7 +69,7 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
             {
               label: "Gamma",
               data: gamma,
-              borderColor: "#2ecc71",
+              borderColor: colors.success,
               pointRadius: 0,
               borderWidth: 2,
               tension: 0.3,
@@ -76,7 +78,7 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
             {
               label: "Theta ($/day)",
               data: theta,
-              borderColor: "#e74c3c",
+              borderColor: colors.danger,
               pointRadius: 0,
               borderWidth: 2,
               tension: 0.3,
@@ -85,7 +87,7 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
             {
               label: "Vega ($/1% IV)",
               data: vega,
-              borderColor: "#f39c12",
+              borderColor: colors.warning,
               pointRadius: 0,
               borderWidth: 2,
               tension: 0.3,
@@ -102,7 +104,7 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
           plugins: {
             legend: {
               display: true,
-              labels: { color: "#888", font: { size: 10 } },
+              labels: { color: colors.muted, font: { size: 12 } },
               position: "top",
               onClick: () => {},
             },
@@ -116,24 +118,24 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
           scales: {
             x: {
               type: "category",
-              title: { display: true, text: "Strike Price ($)", color: "#888" },
-              ticks: { color: "#666", maxTicksLimit: 10 },
-              grid: { color: "#222" },
+              title: { display: true, text: "Strike Price ($)", color: colors.muted, font: { size: 12, weight: 600 } },
+              ticks: { color: colors.subtle, maxTicksLimit: 10, font: { size: 12 } },
+              grid: { color: colors.grid },
             },
             y: {
               type: "linear",
               position: "left",
-              title: { display: true, text: "Delta", color: "#3498db" },
-              ticks: { color: "#666" },
-              grid: { color: "#222" },
+              title: { display: true, text: "Delta", color: colors.blue, font: { size: 12, weight: 600 } },
+              ticks: { color: colors.subtle, font: { size: 12 } },
+              grid: { color: colors.grid },
               min: 0,
               max: 1,
             },
             y1: {
               type: "linear",
               position: "right",
-              title: { display: true, text: "Gamma / Theta / Vega", color: "#888" },
-              ticks: { color: "#666" },
+              title: { display: true, text: "Gamma / Theta / Vega", color: colors.muted, font: { size: 12, weight: 600 } },
+              ticks: { color: colors.subtle, font: { size: 12 } },
               grid: { drawOnChartArea: false },
             },
           },
@@ -146,15 +148,15 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
 
               const spotX = xScale.getPixelForValue(findIdx(strikes, spot));
               ctx.save();
-              ctx.strokeStyle = "#e74c3c";
+              ctx.strokeStyle = colors.danger;
               ctx.lineWidth = 1.5;
               ctx.setLineDash([6, 4]);
               ctx.beginPath();
               ctx.moveTo(spotX, yTop);
               ctx.lineTo(spotX, yBottom);
               ctx.stroke();
-              ctx.fillStyle = "#e74c3c";
-              ctx.font = "11px sans-serif";
+              ctx.fillStyle = colors.danger;
+              ctx.font = "12px sans-serif";
               ctx.fillText(`ATM $${spot.toFixed(0)}`, spotX + 4, yTop + 14);
               ctx.restore();
             },

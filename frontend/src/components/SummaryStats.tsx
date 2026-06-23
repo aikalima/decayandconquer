@@ -23,7 +23,7 @@ function interpCdf(target: number, cdf: number[], prices: number[]): number {
   return prices[prices.length - 1];
 }
 
-export function interpCdfAt(price: number, prices: number[], cdf: number[]): number {
+function interpCdfAt(price: number, prices: number[], cdf: number[]): number {
   if (price <= prices[0]) return 0;
   if (price >= prices[prices.length - 1]) return 1;
   for (let i = 1; i < prices.length; i++) {
@@ -35,7 +35,7 @@ export function interpCdfAt(price: number, prices: number[], cdf: number[]): num
   return 1;
 }
 
-export function getAccuracyBadge(cdfPct: number): { label: string; color: string; bg: string; explanation: string } {
+function getAccuracyBadge(cdfPct: number): { label: string; color: string; bg: string; explanation: string } {
   if (cdfPct >= 0.25 && cdfPct <= 0.75) {
     return {
       label: "Accurate",
@@ -89,7 +89,7 @@ export default function SummaryStats({ data, meta }: Props) {
   const isPrediction = !hasRealized;
 
   return (
-    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 18, display: "flex", flexDirection: "column", gap: 16, boxShadow: "var(--shadow-soft)" }}>
 
       {/* Top banner: Result summary */}
       <div style={{
@@ -98,46 +98,46 @@ export default function SummaryStats({ data, meta }: Props) {
         justifyContent: "space-between",
         flexWrap: "wrap",
         gap: 12,
-        padding: "10px 14px",
+        padding: "12px 14px",
         borderRadius: 8,
-        background: hasRealized ? "#0f1f0f" : "#0f1f1f",
-        border: `1px solid ${hasRealized ? "#2a5a2a" : "#2a5a5a"}`,
+        background: hasRealized ? "var(--success-soft)" : "var(--accent-soft)",
+        border: `1px solid ${hasRealized ? "var(--success)" : "var(--accent-border)"}`,
       }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-            <strong style={{ color: isPrediction ? "#2ecc71" : "#2ecc71", fontSize: 15 }}>
+            <strong style={{ color: "var(--success)", fontSize: 16 }}>
               {meta.ticker} {isPrediction ? "Prediction" : "Backtest"}
             </strong>
             {badge && (
               <span style={{
                 background: badge.color,
-                color: "#000",
+                color: "var(--text-on-accent)",
                 fontWeight: 700,
-                fontSize: 10,
-                padding: "2px 8px",
+                fontSize: 11,
+                padding: "3px 8px",
                 borderRadius: 4,
               }}>
                 {badge.label}
               </span>
             )}
           </div>
-          <div style={{ fontSize: 12, color: "#aaa", lineHeight: 1.6 }}>
+          <div style={{ fontSize: 13, color: "var(--text-soft)", lineHeight: 1.65 }}>
             {isPrediction ? (
               <>
                 Given option prices from {meta.obs_date_from} to {meta.obs_date_to}, the
-                market predicts {meta.ticker} around <strong style={{ color: "#2ecc71" }}>${median.toFixed(0)}</strong> by {meta.target_date}.
-                {" "}The current price is <strong style={{ color: "#ccc" }}>${meta.spot.toFixed(2)}</strong>.
+                market predicts {meta.ticker} around <strong style={{ color: "var(--success)" }}>${median.toFixed(0)}</strong> by {meta.target_date}.
+                {" "}The current price is <strong style={{ color: "var(--text)" }}>${meta.spot.toFixed(2)}</strong>.
               </>
             ) : (
               <>
-                Predicted <strong style={{ color: "#2ecc71" }}>${median.toFixed(0)}</strong>,
-                actual was <strong style={{ color: "#2ecc71" }}>${meta.realized_price!.toFixed(2)}</strong>.
+                Predicted <strong style={{ color: "var(--success)" }}>${median.toFixed(0)}</strong>,
+                actual was <strong style={{ color: "var(--success)" }}>${meta.realized_price!.toFixed(2)}</strong>.
                 {badge && (
-                  <span style={{ color: "#888" }}> {badge.explanation}</span>
+                  <span style={{ color: "var(--muted)" }}> {badge.explanation}</span>
                 )}
                 {cdfPct != null && (
-                  <span style={{ color: "#888" }}>
-                    {" "}Only <strong style={{ color: badge?.color || "#ccc" }}>{(cdfPct * 100).toFixed(1)}%</strong> of predicted outcomes were below the actual price.
+                  <span style={{ color: "var(--muted)" }}>
+                    {" "}Only <strong style={{ color: badge?.color || "var(--text)" }}>{(cdfPct * 100).toFixed(1)}%</strong> of predicted outcomes were below the actual price.
                   </span>
                 )}
               </>
@@ -147,7 +147,7 @@ export default function SummaryStats({ data, meta }: Props) {
       </div>
 
       {/* Grouped stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
         <StatsGroup title="Setup" color="#6c63ff">
           <Stat label="Observation Window" value={`${meta.obs_date_from} to ${meta.obs_date_to}`} tooltip="The date range of options data used to build the prediction." />
           {meta.days_averaged > 1 && (
@@ -183,15 +183,15 @@ export default function SummaryStats({ data, meta }: Props) {
 function StatsGroup({ title, children, columns, color }: { title: string; children: React.ReactNode; columns?: number; color?: string }) {
   return (
     <div style={{
-      background: color ? `${color}08` : "#0f0f1a",
-      border: `1px solid ${color ? `${color}30` : "#1a1a2e"}`,
+      background: color ? `${color}12` : "var(--surface-subtle)",
+      border: `1px solid ${color ? `${color}35` : "var(--border)"}`,
       borderRadius: 8,
       padding: "10px 12px",
       display: "flex",
       flexDirection: "column",
-      gap: 8,
+      gap: 10,
     }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: color || "#555", textTransform: "uppercase", letterSpacing: 1 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: color || "var(--muted)", textTransform: "uppercase", letterSpacing: 0.7 }}>
         {title}
       </div>
       {columns ? (
@@ -211,10 +211,10 @@ function Stat({ label, value, highlight, tooltip }: {
 }) {
   return (
     <div title={tooltip} style={{ cursor: "help" }}>
-      <div style={{ fontSize: 10, color: "#666", marginBottom: 2, borderBottom: "1px dotted #333", display: "inline" }}>
+      <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 3, borderBottom: "1px dotted var(--border-strong)", display: "inline" }}>
         {label}
       </div>
-      <div style={{ fontSize: 14, fontWeight: 600, color: highlight || "#e0e0e0" }}>
+      <div style={{ fontSize: 15, fontWeight: 750, color: highlight || "var(--text)" }}>
         {value}
       </div>
     </div>

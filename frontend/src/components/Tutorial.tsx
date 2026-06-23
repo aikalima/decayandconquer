@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { setTutorialTrigger, STORAGE_KEY } from "./tutorialController";
 
 interface Step {
   title: string;
@@ -14,7 +15,7 @@ const STEPS: Step[] = [
   {
     title: "1. Enter a Ticker",
     text: "Type any US stock symbol (SPY, AAPL, TSLA, NVDA). The system will look up its options data to build a price prediction.",
-    target: 'input[style*="font-size: 20px"]',
+    target: '[data-tutorial="ticker-input"]',
     position: "bottom",
   },
   {
@@ -41,14 +42,6 @@ const STEPS: Step[] = [
   },
 ];
 
-const STORAGE_KEY = "decay_tutorial_seen";
-
-let _triggerTutorial: (() => void) | null = null;
-
-export function startTutorial() {
-  _triggerTutorial?.();
-}
-
 export default function Tutorial() {
   const [step, setStep] = useState(0);
   const [visible, setVisible] = useState(false);
@@ -56,11 +49,11 @@ export default function Tutorial() {
   const [tooltipRect, setTooltipRect] = useState<DOMRect | null>(null);
 
   useEffect(() => {
-    _triggerTutorial = () => {
+    setTutorialTrigger(() => {
       setStep(0);
       setVisible(true);
-    };
-    return () => { _triggerTutorial = null; };
+    });
+    return () => setTutorialTrigger(null);
   }, []);
 
   useEffect(() => {
@@ -73,14 +66,16 @@ export default function Tutorial() {
     if (!visible) return;
     const currentStep = STEPS[step];
     const el = document.querySelector(currentStep.target);
-    if (el) {
+    const frame = requestAnimationFrame(() => {
+      if (!el) return;
       setTargetRect(el.getBoundingClientRect());
       // Tooltip anchors to a different element if specified
       const anchorEl = currentStep.tooltipAnchor
         ? document.querySelector(currentStep.tooltipAnchor)
         : el;
       setTooltipRect(anchorEl ? anchorEl.getBoundingClientRect() : el.getBoundingClientRect());
-    }
+    });
+    return () => cancelAnimationFrame(frame);
   }, [step, visible]);
 
   if (!visible) return null;
@@ -101,15 +96,15 @@ export default function Tutorial() {
     }
   };
 
-  let tooltipStyle: React.CSSProperties = {
+  const tooltipStyle: React.CSSProperties = {
     position: "fixed",
     zIndex: 10000,
-    background: "#1a1a2e",
-    border: "2px solid #6c63ff",
-    borderRadius: 12,
+    background: "var(--surface)",
+    border: "2px solid var(--accent)",
+    borderRadius: 8,
     padding: "16px 20px",
     maxWidth: 360,
-    boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+    boxShadow: "var(--shadow)",
   };
 
   const anchorRect = tooltipRect || targetRect;
@@ -152,7 +147,7 @@ export default function Tutorial() {
         const glowColorStrong = isTargetDot
           ? "rgba(46, 204, 113, 0.9)"
           : "rgba(108, 99, 255, 0.8)";
-        const borderColor = isTargetDot ? "#2ecc71" : "#6c63ff";
+        const borderColor = isTargetDot ? "var(--success)" : "var(--accent)";
         const animName = currentStep.animation ? "tutorial-pulse" : undefined;
 
         // If element is off-screen (e.g. panned timeline), don't show highlight
@@ -188,15 +183,15 @@ export default function Tutorial() {
       {/* Tooltip */}
       <div style={tooltipStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: "#6c63ff" }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: "var(--accent)" }}>
             {currentStep.title}
           </span>
-          <span style={{ fontSize: 11, color: "#666" }}>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>
             {step + 1} / {STEPS.length}
           </span>
         </div>
 
-        <p style={{ fontSize: 13, color: "#ccc", lineHeight: 1.6, margin: "0 0 14px" }}>
+        <p style={{ fontSize: 14, color: "var(--text-soft)", lineHeight: 1.6, margin: "0 0 14px" }}>
           {currentStep.text}
         </p>
 
@@ -206,9 +201,9 @@ export default function Tutorial() {
             style={{
               background: "transparent",
               border: "none",
-              color: "#666",
+              color: "var(--muted)",
               cursor: "pointer",
-              fontSize: 12,
+              fontSize: 13,
               padding: 0,
             }}
           >
@@ -221,11 +216,11 @@ export default function Tutorial() {
               padding: "6px 18px",
               borderRadius: 6,
               border: "none",
-              background: "#6c63ff",
-              color: "#fff",
+              background: "var(--accent)",
+              color: "var(--text-on-accent)",
               cursor: "pointer",
-              fontSize: 13,
-              fontWeight: 600,
+              fontSize: 14,
+              fontWeight: 750,
             }}
           >
             {isLast ? "Got it!" : "Next"}
@@ -241,7 +236,7 @@ export default function Tutorial() {
                 width: 6,
                 height: 6,
                 borderRadius: "50%",
-                background: i === step ? "#6c63ff" : "#333",
+                background: i === step ? "var(--accent)" : "var(--border-strong)",
                 transition: "background 0.2s",
               }}
             />
@@ -258,8 +253,4 @@ export default function Tutorial() {
       `}</style>
     </>
   );
-}
-
-export function resetTutorial() {
-  localStorage.removeItem(STORAGE_KEY);
 }

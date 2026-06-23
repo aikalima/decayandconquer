@@ -46,19 +46,17 @@ interface Props {
 
 export default function HeatMapSection({ ticker }: Props) {
   const [data, setData] = useState<HeatMapResponse | null>(null);
-  const [loading, setLoading] = useState(false);
   const [stage, setStage] = useState("");
   const [metric, setMetric] = useState<Metric>("net_volume");
   const [hoveredCell, setHoveredCell] = useState<HeatMapCell | null>(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
   const [fetchedTicker, setFetchedTicker] = useState("");
+  const [nowMs] = useState(() => Date.now());
+  const loading = Boolean(ticker && ticker !== fetchedTicker);
 
   // Auto-fetch when ticker changes
   useEffect(() => {
     if (!ticker || ticker === fetchedTicker) return;
-    setLoading(true);
-    setData(null);
-    setStage("Loading heat map...");
     fetchHeatMapStream(ticker, 4, (event) => {
       if (event.stage) setStage(event.stage);
     })
@@ -66,8 +64,10 @@ export default function HeatMapSection({ ticker }: Props) {
         if (!res.error) setData(res);
         setFetchedTicker(ticker);
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {
+        setData(null);
+        setFetchedTicker(ticker);
+      });
   }, [ticker]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cellMap = new Map<string, HeatMapCell>();
@@ -84,9 +84,9 @@ export default function HeatMapSection({ ticker }: Props) {
     Math.abs(s - data.spot) < Math.abs(best - data.spot) ? s : best, data.strikes[0]) : 0;
 
   return (
-    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16, position: "relative" }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 18, position: "relative", boxShadow: "var(--shadow-soft)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <h3 style={{ margin: 0, fontSize: 15, color: "#ccc" }}>Options Heat Map</h3>
+        <h3 className="dashboard-section-title">Options Heat Map</h3>
         <div style={{ display: "flex", gap: 4 }}>
           {METRICS.map((m) => (
             <button
@@ -94,14 +94,14 @@ export default function HeatMapSection({ ticker }: Props) {
               onClick={() => setMetric(m.key)}
               title={m.tooltip}
               style={{
-                padding: "3px 8px",
+                padding: "5px 10px",
                 borderRadius: 4,
-                border: `1px solid ${metric === m.key ? "#6c63ff" : "#333"}`,
-                background: metric === m.key ? "#6c63ff" : "transparent",
-                color: metric === m.key ? "#fff" : "#888",
+                border: `1px solid ${metric === m.key ? "var(--accent)" : "var(--border)"}`,
+                background: metric === m.key ? "var(--accent)" : "transparent",
+                color: metric === m.key ? "var(--text-on-accent)" : "var(--muted)",
                 cursor: "pointer",
-                fontSize: 10,
-                fontWeight: 600,
+                fontSize: 12,
+                fontWeight: 750,
               }}
             >
               {m.label}
@@ -109,34 +109,34 @@ export default function HeatMapSection({ ticker }: Props) {
           ))}
         </div>
       </div>
-      <p style={{ margin: "0 0 12px", fontSize: 11, color: "#666" }}>
+      <p className="dashboard-caption" style={{ margin: "0 0 14px" }}>
         Call vs put activity across strikes and expiry dates.
         Green = bullish (call-heavy), red = bearish (put-heavy).
       </p>
 
       {loading && (
-        <div style={{ padding: "20px 0", textAlign: "center", color: "#555", fontSize: 12 }}>
-          {stage || "Working..."}
+        <div style={{ padding: "20px 0", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
+          {stage || "Loading heat map..."}
         </div>
       )}
 
       {!loading && !data && (
-        <div style={{ padding: "20px 0", textAlign: "center", color: "#444", fontSize: 12 }}>
+        <div style={{ padding: "20px 0", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
           No heat map data available.
         </div>
       )}
 
       {data && (
         <>
-          <div style={{ fontSize: 11, color: "#666", marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 10 }}>
             Spot: ${data.spot.toFixed(2)} | {data.expiries.length} expiries, {data.strikes.length} strikes
           </div>
 
           <div style={{ overflowX: "auto" }}>
-            <table style={{ borderCollapse: "collapse", fontSize: 11, width: "100%" }}>
+            <table style={{ borderCollapse: "collapse", fontSize: 12, width: "100%" }}>
               <thead>
                 <tr>
-                  <th style={{ padding: "6px 8px", textAlign: "left", color: "#666", fontSize: 10, borderBottom: "1px solid #2a2a4a" }}>
+                  <th style={{ padding: "7px 8px", textAlign: "left", color: "var(--muted)", fontSize: 11, borderBottom: "1px solid var(--border)" }}>
                     Expiry
                   </th>
                   {data.strikes.map((s) => (
@@ -145,33 +145,33 @@ export default function HeatMapSection({ ticker }: Props) {
                       style={{
                         padding: "6px 4px",
                         textAlign: "center",
-                        color: s === atmStrike ? "#6c63ff" : "#666",
-                        fontSize: 10,
+                        color: s === atmStrike ? "var(--accent)" : "var(--muted)",
+                        fontSize: 11,
                         fontWeight: s === atmStrike ? 700 : 400,
-                        borderBottom: s === atmStrike ? "2px solid #6c63ff" : "1px solid #2a2a4a",
+                        borderBottom: s === atmStrike ? "2px solid var(--accent)" : "1px solid var(--border)",
                         whiteSpace: "nowrap",
                       }}
                     >
                       ${formatStrike(s)}
-                      {s === atmStrike && <div style={{ fontSize: 8, color: "#6c63ff" }}>ATM</div>}
+                      {s === atmStrike && <div style={{ fontSize: 9, color: "var(--accent)" }}>ATM</div>}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {data.expiries.map((exp) => {
-                  const days = Math.round((new Date(exp + "T00:00:00").getTime() - Date.now()) / 86400000);
+                  const days = Math.round((new Date(exp + "T00:00:00").getTime() - nowMs) / 86400000);
                   return (
                     <tr key={exp}>
                       <td style={{
                         padding: "6px 8px",
-                        color: "#aaa",
-                        fontSize: 10,
+                        color: "var(--text-soft)",
+                        fontSize: 11,
                         fontWeight: 600,
                         whiteSpace: "nowrap",
-                        borderBottom: "1px solid #1a1a2e",
+                        borderBottom: "1px solid var(--border)",
                       }}>
-                        {formatExpiry(exp)} <span style={{ color: "#555" }}>({days}d)</span>
+                        {formatExpiry(exp)} <span style={{ color: "var(--muted)" }}>({days}d)</span>
                       </td>
                       {data.strikes.map((s) => {
                         const cell = cellMap.get(`${s}-${exp}`);
@@ -185,11 +185,11 @@ export default function HeatMapSection({ ticker }: Props) {
                               padding: "4px 2px",
                               textAlign: "center",
                               background: cellColor(value, maxAbs),
-                              color: Math.abs(value) > maxAbs * 0.3 ? "#fff" : "#666",
-                              fontSize: 9,
+                              color: Math.abs(value) > maxAbs * 0.3 ? "#ffffff" : "var(--muted)",
+                              fontSize: 10,
                               fontWeight: Math.abs(value) > maxAbs * 0.5 ? 700 : 400,
-                              borderBottom: "1px solid #0f0f1a",
-                              borderRight: "1px solid #0f0f1a",
+                              borderBottom: "1px solid var(--surface)",
+                              borderRight: "1px solid var(--surface)",
                               cursor: cell ? "crosshair" : "default",
                               minWidth: 40,
                             }}
@@ -207,14 +207,14 @@ export default function HeatMapSection({ ticker }: Props) {
 
           {/* Legend */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, justifyContent: "center" }}>
-            <span style={{ fontSize: 10, color: "#e74c3c" }}>Put-heavy</span>
+            <span style={{ fontSize: 11, color: "var(--danger)" }}>Put-heavy</span>
             <div style={{
               width: 160,
               height: 8,
               borderRadius: 4,
-              background: "linear-gradient(90deg, #e74c3c, #3d0a0a, #0f0f1a, #0a3d0a, #2ecc71)",
+              background: "linear-gradient(90deg, var(--danger), rgba(232,93,87,0.16), var(--input-bg), rgba(46,204,113,0.16), var(--success))",
             }} />
-            <span style={{ fontSize: 10, color: "#2ecc71" }}>Call-heavy</span>
+            <span style={{ fontSize: 11, color: "var(--success)" }}>Call-heavy</span>
           </div>
 
           {/* Tooltip */}
@@ -224,35 +224,35 @@ export default function HeatMapSection({ ticker }: Props) {
                 position: "fixed",
                 left: hoverPos.x + 12,
                 top: hoverPos.y - 10,
-                background: "#16162a",
-                border: "1px solid #2a2a4a",
+                background: "var(--surface-elevated)",
+                border: "1px solid var(--border)",
                 borderRadius: 8,
                 padding: "10px 12px",
-                fontSize: 11,
-                color: "#ccc",
+                fontSize: 12,
+                color: "var(--text-soft)",
                 zIndex: 1000,
-                boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+                boxShadow: "var(--shadow)",
                 pointerEvents: "none",
                 lineHeight: 1.6,
               }}
             >
-              <div style={{ fontWeight: 700, color: "#fff", marginBottom: 4 }}>
+              <div style={{ fontWeight: 800, color: "var(--text)", marginBottom: 4 }}>
                 ${hoveredCell.strike.toFixed(0)} | {hoveredCell.expiry}
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "auto auto auto", gap: "2px 12px" }}>
-                <span style={{ color: "#888" }}></span>
-                <span style={{ color: "#2ecc71", fontWeight: 600 }}>Calls</span>
-                <span style={{ color: "#e74c3c", fontWeight: 600 }}>Puts</span>
-                <span style={{ color: "#888" }}>Volume</span>
+                <span style={{ color: "var(--muted)" }}></span>
+                <span style={{ color: "var(--success)", fontWeight: 700 }}>Calls</span>
+                <span style={{ color: "var(--danger)", fontWeight: 700 }}>Puts</span>
+                <span style={{ color: "var(--muted)" }}>Volume</span>
                 <span>{hoveredCell.call_volume.toLocaleString()}</span>
                 <span>{hoveredCell.put_volume.toLocaleString()}</span>
-                <span style={{ color: "#888" }}>OI</span>
+                <span style={{ color: "var(--muted)" }}>OI</span>
                 <span>{hoveredCell.call_oi.toLocaleString()}</span>
                 <span>{hoveredCell.put_oi.toLocaleString()}</span>
-                <span style={{ color: "#888" }}>Mid</span>
+                <span style={{ color: "var(--muted)" }}>Mid</span>
                 <span>${hoveredCell.call_mid.toFixed(2)}</span>
                 <span>${hoveredCell.put_mid.toFixed(2)}</span>
-                <span style={{ color: "#888" }}>IV</span>
+                <span style={{ color: "var(--muted)" }}>IV</span>
                 <span>{(hoveredCell.call_iv * 100).toFixed(1)}%</span>
                 <span>{(hoveredCell.put_iv * 100).toFixed(1)}%</span>
               </div>

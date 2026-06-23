@@ -64,6 +64,7 @@ GOOGLE_KEY=$(gcloud secrets versions access latest --secret=google-api-key 2>/de
 cat > "$APP_DIR/.env" <<EOF
 MASSIVE_API_KEY=$MASSIVE_KEY
 ANTHROPIC_API_KEY=$ANTHROPIC_KEY
+ANTHROPIC_MODEL=${anthropic_model}
 GOOGLE_API_KEY=$GOOGLE_KEY
 EOF
 chown "$APP_USER:$APP_USER" "$APP_DIR/.env"

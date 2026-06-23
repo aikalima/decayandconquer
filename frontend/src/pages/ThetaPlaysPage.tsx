@@ -10,6 +10,17 @@ const TABS: { key: Tab; label: string; description: string }[] = [
   { key: "expensive_puts", label: "Expensive Puts", description: "Best puts to sell. Priced expecting the underlying to move down more than it historically has." },
 ];
 
+const THETA_EXPIRY_OPTIONS: ThetaExpiry[] = [
+  { expiry: "2026-07-17", last_scanned: "", tickers_scanned: 0 },
+  { expiry: "2026-08-21", last_scanned: "", tickers_scanned: 0 },
+  { expiry: "2026-09-18", last_scanned: "", tickers_scanned: 0 },
+];
+
+function thetaExpiryOptions(available: ThetaExpiry[]): ThetaExpiry[] {
+  const availableByExpiry = new Map(available.map((exp) => [exp.expiry, exp]));
+  return THETA_EXPIRY_OPTIONS.map((exp) => availableByExpiry.get(exp.expiry) ?? exp);
+}
+
 function numericSortValue(row: ThetaPlayRow, col: string): number {
   const value = row[col as keyof ThetaPlayRow];
   return typeof value === "number" ? value : 0;
@@ -35,13 +46,15 @@ export default function ThetaPlaysPage() {
   const [sortCol, setSortCol] = useState<string>("avg_premium");
   const [sortAsc, setSortAsc] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [nowMs] = useState(() => Date.now());
 
   // Load available expiries on mount
   useEffect(() => {
     fetchThetaExpiries().then((exps) => {
-      setExpiries(exps);
-      if (exps.length > 0) {
-        setSelectedExpiry(exps[0].expiry);
+      const options = thetaExpiryOptions(exps);
+      setExpiries(options);
+      if (options.length > 0) {
+        setSelectedExpiry(options[0].expiry);
       } else {
         setLoading(false);
       }
@@ -51,8 +64,6 @@ export default function ThetaPlaysPage() {
   // Load results when selected expiry changes
   useEffect(() => {
     if (!selectedExpiry) return;
-    setLoading(true);
-    setResults(null);
     fetchThetaPlays(selectedExpiry).then((res) => {
       setResults(res);
       setLoading(false);
@@ -77,50 +88,57 @@ export default function ThetaPlaysPage() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       {/* Header */}
       <div style={{
-        borderLeft: "3px solid #6c63ff",
-        padding: "12px 16px",
-        background: "#6c63ff08",
+        borderLeft: "4px solid var(--accent)",
+        padding: "16px 18px",
+        background: "var(--accent-soft)",
+        border: "1px solid var(--accent-border)",
         borderRadius: "0 8px 8px 0",
-        maxWidth: "70%",
+        maxWidth: "100%",
       }}>
-        <p style={{ margin: 0, fontSize: 14, color: "#aaa", lineHeight: 1.7 }}>
+        <p style={{ margin: 0, fontSize: 15, color: "var(--text-soft)", lineHeight: 1.7 }}>
           Options with implied volatility (IV) higher than historical volatility (HV)
           are overpriced relative to actual moves.
-          {" "}<strong style={{ color: "#ccc" }}>Sell these for theta decay.</strong>
+          {" "}<strong style={{ color: "var(--text)" }}>Sell these for theta decay.</strong>
         </p>
       </div>
 
       {/* Expiry selector */}
       <div style={{
-        background: "#1a1a2e",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
         borderRadius: 8,
-        padding: "12px 16px",
+        padding: "14px 18px",
         display: "flex",
         alignItems: "center",
         gap: 10,
+        boxShadow: "var(--shadow-soft)",
       }}>
-        <span style={{ fontSize: 12, color: "#888" }}>Expiry:</span>
+        <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 750 }}>Expiry:</span>
         {expiries.length > 0 ? (
           <select
             value={selectedExpiry}
-            onChange={(e) => setSelectedExpiry(e.target.value)}
+            onChange={(e) => {
+              setLoading(true);
+              setResults(null);
+              setSelectedExpiry(e.target.value);
+            }}
             style={{
-              padding: "5px 10px",
+              padding: "7px 10px",
               borderRadius: 6,
-              border: "1px solid #333",
-              background: "#0f0f1a",
-              color: "#e0e0e0",
-              fontSize: 13,
-              fontWeight: 600,
+              border: "1px solid var(--border-strong)",
+              background: "var(--input-bg)",
+              color: "var(--text)",
+              fontSize: 14,
+              fontWeight: 750,
               cursor: "pointer",
               outline: "none",
             }}
           >
             {expiries.map((exp) => {
-              const days = Math.round((new Date(exp.expiry + "T00:00:00").getTime() - Date.now()) / 86400000);
+              const days = Math.round((new Date(exp.expiry + "T00:00:00").getTime() - nowMs) / 86400000);
               return (
                 <option key={exp.expiry} value={exp.expiry}>
                   {formatExpiryDate(exp.expiry)} ({days}d)
@@ -129,22 +147,35 @@ export default function ThetaPlaysPage() {
             })}
           </select>
         ) : (
-          <span style={{ fontSize: 12, color: "#555" }}>No scans available</span>
+          <span style={{ fontSize: 13, color: "var(--muted)" }}>No scans available</span>
         )}
       </div>
 
       {/* Loading */}
       {loading && (
-        <div style={{ textAlign: "center", padding: 40, color: "#555", fontSize: 13 }}>
+        <div style={{ textAlign: "center", padding: 40, color: "var(--muted)", fontSize: 14 }}>
           Loading...
+        </div>
+      )}
+
+      {!loading && !results && selectedExpiry && (
+        <div style={{
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          padding: 20,
+          color: "var(--muted)",
+          boxShadow: "var(--shadow-soft)",
+        }}>
+          No theta scan found for {formatExpiryDate(selectedExpiry)} yet.
         </div>
       )}
 
       {/* Results */}
       {!loading && results && (
-        <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16 }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 18, boxShadow: "var(--shadow-soft)" }}>
           {/* Tabs */}
-          <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
             {TABS.map((tab) => (
               <button
                 key={tab.key}
@@ -155,14 +186,14 @@ export default function ThetaPlaysPage() {
                   setShowAll(false);
                 }}
                 style={{
-                  padding: "6px 14px",
+                  padding: "8px 14px",
                   borderRadius: 6,
-                  border: `1px solid ${activeTab === tab.key ? "#6c63ff" : "#333"}`,
-                  background: activeTab === tab.key ? "#6c63ff" : "transparent",
-                  color: activeTab === tab.key ? "#fff" : "#888",
+                  border: `1px solid ${activeTab === tab.key ? "var(--accent)" : "var(--border)"}`,
+                  background: activeTab === tab.key ? "var(--accent)" : "transparent",
+                  color: activeTab === tab.key ? "var(--text-on-accent)" : "var(--muted)",
                   cursor: "pointer",
-                  fontSize: 12,
-                  fontWeight: 600,
+                  fontSize: 13,
+                  fontWeight: 750,
                 }}
               >
                 {tab.label}
@@ -170,16 +201,16 @@ export default function ThetaPlaysPage() {
             ))}
           </div>
 
-          <p style={{ fontSize: 11, color: "#666", margin: "0 0 12px" }}>
+          <p className="dashboard-caption" style={{ margin: "0 0 14px" }}>
             {TABS.find((t) => t.key === activeTab)?.description}
             {results.scanned_at && (
-              <span style={{ color: "#555" }}> Last scan: {new Date(results.scanned_at).toLocaleString()}</span>
+              <span style={{ color: "var(--muted-2)" }}> Last scan: {new Date(results.scanned_at).toLocaleString()}</span>
             )}
           </p>
 
           {/* Table */}
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr>
                   {COLUMNS.map((col) => (
@@ -188,13 +219,13 @@ export default function ThetaPlaysPage() {
                       title={col.tooltip}
                       onClick={() => handleSort(col.key)}
                       style={{
-                        padding: "8px 6px",
+                        padding: "10px 8px",
                         textAlign: col.align || "right",
-                        color: sortCol === col.key ? "#6c63ff" : "#888",
+                        color: sortCol === col.key ? "var(--accent)" : "var(--muted)",
                         cursor: "pointer",
-                        borderBottom: "1px solid #2a2a4a",
-                        fontWeight: 600,
-                        fontSize: 10,
+                        borderBottom: "1px solid var(--border)",
+                        fontWeight: 800,
+                        fontSize: 11,
                         textTransform: "uppercase",
                         letterSpacing: 0.5,
                         whiteSpace: "nowrap",
@@ -208,15 +239,15 @@ export default function ThetaPlaysPage() {
               </thead>
               <tbody>
                 {(showAll ? sorted : sorted.slice(0, 10)).map((row, i) => (
-                  <tr key={row.ticker} style={{ background: i % 2 === 0 ? "transparent" : "#0f0f1a" }}>
+                  <tr key={row.ticker} style={{ background: i % 2 === 0 ? "transparent" : "var(--surface-subtle)" }}>
                     {COLUMNS.map((col) => (
                       <td
                         key={col.key}
                         style={{
-                          padding: "6px",
+                          padding: "9px 8px",
                           textAlign: col.align || "right",
-                          borderBottom: "1px solid #1a1a2e",
-                          color: col.color ? col.color(row) : "#ccc",
+                          borderBottom: "1px solid var(--border)",
+                          color: col.color ? col.color(row) : "var(--text-soft)",
                           fontWeight: col.bold?.(row) ? 700 : 400,
                           whiteSpace: "nowrap",
                         }}
@@ -228,7 +259,7 @@ export default function ThetaPlaysPage() {
                 ))}
                 {sorted.length === 0 && (
                   <tr>
-                    <td colSpan={COLUMNS.length} style={{ padding: 20, textAlign: "center", color: "#555" }}>
+                    <td colSpan={COLUMNS.length} style={{ padding: 20, textAlign: "center", color: "var(--muted)" }}>
                       No results for this category.
                     </td>
                   </tr>
@@ -241,13 +272,13 @@ export default function ThetaPlaysPage() {
                   onClick={() => setShowAll(!showAll)}
                   style={{
                     background: "transparent",
-                    border: "1px solid #333",
+                    border: "1px solid var(--border)",
                     borderRadius: 6,
-                    padding: "6px 20px",
-                    color: "#6c63ff",
+                    padding: "8px 20px",
+                    color: "var(--accent)",
                     cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 600,
+                    fontSize: 13,
+                    fontWeight: 750,
                   }}
                 >
                   {showAll ? "Show less" : `Show all ${sorted.length} results`}
@@ -282,7 +313,7 @@ const COLUMNS: Column[] = [
     tooltip: "Stock symbol",
     align: "left",
     render: (r) => r.ticker,
-    color: () => "#fff",
+    color: () => "var(--text)",
     bold: () => true,
   },
   {
@@ -296,14 +327,14 @@ const COLUMNS: Column[] = [
     label: "Call / Put",
     tooltip: "ATM call and put strike prices nearest to spot",
     render: (r) => `$${r.call_strike.toFixed(0)} / $${r.put_strike.toFixed(0)}`,
-    color: () => "#aaa",
+    color: () => "var(--muted)",
   },
   {
     key: "pct_change_5d",
     label: "5d Change",
     tooltip: "Stock price change over the last 5 trading days",
     render: (r) => `${r.pct_change_5d >= 0 ? "+" : ""}${r.pct_change_5d.toFixed(1)}%`,
-    color: (r) => r.pct_change_5d > 0 ? "#2ecc71" : r.pct_change_5d < 0 ? "#e74c3c" : "#888",
+    color: (r) => r.pct_change_5d > 0 ? "var(--success)" : r.pct_change_5d < 0 ? "var(--danger)" : "var(--muted)",
   },
   {
     key: "call_mid",
@@ -334,7 +365,7 @@ const COLUMNS: Column[] = [
     label: "Premium",
     tooltip: "IV / HV ratio. Above 1.0 means options are priced for bigger moves than actually occurred. Higher = more overpriced = better to sell",
     render: (r) => `${r.avg_premium.toFixed(2)}x`,
-    color: (r) => r.avg_premium >= 2.0 ? "#2ecc71" : r.avg_premium >= 1.5 ? "#a3d977" : r.avg_premium >= 1.0 ? "#ccc" : "#666",
+    color: (r) => r.avg_premium >= 2.0 ? "var(--success)" : r.avg_premium >= 1.5 ? "var(--success)" : r.avg_premium >= 1.0 ? "var(--text-soft)" : "var(--muted)",
     bold: (r) => r.avg_premium >= 1.5,
   },
   {
@@ -342,20 +373,20 @@ const COLUMNS: Column[] = [
     label: "Call Prem",
     tooltip: "Call IV / HV. High values mean call options are especially overpriced (sell calls)",
     render: (r) => `${r.call_premium.toFixed(2)}x`,
-    color: (r) => r.call_premium >= 1.5 ? "#2ecc71" : "#ccc",
+    color: (r) => r.call_premium >= 1.5 ? "var(--success)" : "var(--text-soft)",
   },
   {
     key: "put_premium",
     label: "Put Prem",
     tooltip: "Put IV / HV. High values mean put options are especially overpriced (sell puts)",
     render: (r) => `${r.put_premium.toFixed(2)}x`,
-    color: (r) => r.put_premium >= 1.5 ? "#2ecc71" : "#ccc",
+    color: (r) => r.put_premium >= 1.5 ? "var(--success)" : "var(--text-soft)",
   },
   {
     key: "beta",
     label: "Beta",
     tooltip: "Correlation to SPY. 1.0 = moves with the market. >1 = more volatile. <1 = less volatile. Negative = inverse",
     render: (r) => r.beta.toFixed(2),
-    color: () => "#aaa",
+    color: () => "var(--muted)",
   },
 ];

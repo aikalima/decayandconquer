@@ -12,11 +12,11 @@ import { CATEGORY_COLORS } from "./categoryColors";
 
 export default function MarketContext({ events, loading, disclaimer, hoveredIndex, onHover }: Props) {
   return (
-    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16 }}>
-      <h3 style={{ margin: "0 0 4px", fontSize: 15, color: "#ccc" }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 18, boxShadow: "var(--shadow-soft)" }}>
+      <h3 className="dashboard-section-title" style={{ marginBottom: 4 }}>
         Market Context
       </h3>
-      <p style={{ margin: "0 0 12px", fontSize: 11, color: "#666" }}>
+      <p className="dashboard-caption" style={{ margin: "0 0 14px" }}>
         Key events during the observation period that may have influenced options pricing.
       </p>
 
@@ -28,7 +28,7 @@ export default function MarketContext({ events, loading, disclaimer, hoveredInde
               style={{
                 height: 48,
                 borderRadius: 6,
-                background: "linear-gradient(90deg, #222 25%, #2a2a4a 50%, #222 75%)",
+                background: "linear-gradient(90deg, var(--surface-subtle) 25%, var(--surface-hover) 50%, var(--surface-subtle) 75%)",
                 backgroundSize: "200% 100%",
                 animation: "shimmer 1.5s infinite",
               }}
@@ -44,7 +44,7 @@ export default function MarketContext({ events, loading, disclaimer, hoveredInde
       )}
 
       {!loading && events.length === 0 && (
-        <div style={{ fontSize: 12, color: "#555", padding: "8px 0" }}>
+        <div style={{ fontSize: 13, color: "var(--muted)", padding: "8px 0" }}>
           No significant events identified for this period.
         </div>
       )}
@@ -53,7 +53,7 @@ export default function MarketContext({ events, loading, disclaimer, hoveredInde
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {events.map((event, i) => {
             const isHovered = hoveredIndex === i;
-            const catColor = CATEGORY_COLORS[event.category] || "#555";
+            const catColor = CATEGORY_COLORS[event.category] || "var(--muted)";
             return (
             <div
               key={i}
@@ -64,7 +64,7 @@ export default function MarketContext({ events, loading, disclaimer, hoveredInde
                 gap: 10,
                 alignItems: "flex-start",
                 padding: "8px 10px",
-                background: isHovered ? "#2a2a5a" : "#0f0f1a",
+                background: isHovered ? "var(--surface-hover)" : "var(--surface-subtle)",
                 borderRadius: 6,
                 borderLeft: `3px solid ${catColor}`,
                 boxShadow: isHovered ? `inset 3px 0 12px -2px ${catColor}88` : undefined,
@@ -73,14 +73,14 @@ export default function MarketContext({ events, loading, disclaimer, hoveredInde
               }}
             >
               <div style={{ minWidth: 70, flexShrink: 0 }}>
-                <div style={{ fontSize: 11, color: "#888", fontFamily: "monospace" }}>
+                <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "monospace" }}>
                   {event.date}
                 </div>
                 <span
                   style={{
                     fontSize: 9,
                     fontWeight: 600,
-                    color: CATEGORY_COLORS[event.category] || "#888",
+                    color: CATEGORY_COLORS[event.category] || "var(--muted)",
                     textTransform: "uppercase",
                     letterSpacing: 0.5,
                   }}
@@ -89,13 +89,13 @@ export default function MarketContext({ events, loading, disclaimer, hoveredInde
                 </span>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12, color: "#ddd", fontWeight: 600, marginBottom: 2 }}>
+                <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 750, marginBottom: 3 }}>
                   {event.headline}
                 </div>
-                <div style={{ fontSize: 11, color: "#888", lineHeight: 1.4 }}>
+                <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
                   {event.impact}
                   {event.source && (
-                    <span style={{ color: "#555", marginLeft: 4 }}>({event.source})</span>
+                    <span style={{ color: "var(--muted-2)", marginLeft: 4 }}>({event.source})</span>
                   )}
                 </div>
               </div>
@@ -106,7 +106,7 @@ export default function MarketContext({ events, loading, disclaimer, hoveredInde
       )}
 
       {disclaimer && !loading && (
-        <div style={{ fontSize: 10, color: "#444", marginTop: 10, fontStyle: "italic" }}>
+        <div style={{ fontSize: 11, color: "var(--muted-2)", marginTop: 10, fontStyle: "italic" }}>
           {disclaimer}
         </div>
       )}

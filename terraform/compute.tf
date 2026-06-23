@@ -43,9 +43,10 @@ resource "google_compute_instance" "decay" {
   }
 
   metadata_startup_script = templatefile("${path.module}/startup.sh", {
-    app_repo_url = var.app_repo_url
-    domain_name  = var.domain_name
-    ssh_user     = var.ssh_user
+    app_repo_url    = var.app_repo_url
+    anthropic_model = var.anthropic_model
+    domain_name     = var.domain_name
+    ssh_user        = var.ssh_user
   })
 
   service_account {

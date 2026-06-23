@@ -8,6 +8,7 @@ interface Props {
   events?: { date: string; category: string }[];
   hoveredEventIndex?: number | null;
   onEventHover?: (index: number | null) => void;
+  onStartTutorial?: () => void;
 }
 
 function isTargetInFuture(targetDate: string): boolean {
@@ -41,7 +42,7 @@ function computeDefaults() {
 const DEFAULTS = computeDefaults();
 export { DEFAULTS };
 
-export default function PredictionForm({ onSubmit, loading, events, hoveredEventIndex, onEventHover }: Props) {
+export default function PredictionForm({ onSubmit, loading, events, hoveredEventIndex, onEventHover, onStartTutorial }: Props) {
   const [ticker, setTicker] = useState("SPY");
   const [obsFrom, setObsFrom] = useState(DEFAULTS.obsFrom);
   const [obsTo, setObsTo] = useState(DEFAULTS.obsTo);
@@ -68,54 +69,81 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
     });
   };
 
-  const buttonColor = isPrediction ? "#2ecc71" : "#6c63ff";
+  const buttonColor = isPrediction ? "var(--success)" : "var(--accent)";
   const buttonLabel = isPrediction ? "Run Prediction" : "Run Backtest";
 
   return (
     <form
       onSubmit={handleSubmit}
-      style={{ display: "flex", flexDirection: "column", gap: 12 }}
+      style={{ display: "flex", flexDirection: "column", gap: 14 }}
     >
       {/* Ticker card */}
       <div style={{
-        background: "#1a1a2e",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
         borderRadius: 8,
-        padding: "16px 20px",
+        padding: "18px 20px",
         display: "flex",
         alignItems: "center",
         gap: 16,
+        boxShadow: "var(--shadow-soft)",
       }}>
-        <label style={{ fontSize: 12, color: "#888", fontWeight: 600 }}>Ticker</label>
+        <label style={{ fontSize: 13, color: "var(--muted)", fontWeight: 750 }}>Ticker</label>
         <input
+          data-tutorial="ticker-input"
           value={ticker}
           onChange={(e) => setTicker(e.target.value.toUpperCase())}
           style={{
-            padding: "6px 12px",
+            padding: "8px 12px",
             borderRadius: 6,
-            border: "1px solid #333",
-            background: "#0f0f1a",
-            color: "#e0e0e0",
-            fontSize: 14,
-            fontWeight: 600,
+            border: "1px solid var(--border-strong)",
+            background: "var(--input-bg)",
+            color: "var(--text)",
+            fontSize: 16,
+            fontWeight: 800,
             width: 100,
             letterSpacing: 0.5,
             textAlign: "center",
           }}
         />
-        <span style={{ fontSize: 12, color: "#555" }}>
+        <span style={{ fontSize: 13, color: "var(--muted)" }}>
           Enter any US stock symbol
         </span>
       </div>
 
       {/* Date range card */}
       <div data-tutorial="date-range" style={{
-        background: "#1a1a2e",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
         borderRadius: 8,
-        padding: "16px 20px 12px",
+        padding: "20px 22px 16px",
         display: "flex",
         flexDirection: "column",
         gap: 0,
+        boxShadow: "var(--shadow-soft)",
       }}>
+        <div style={{ marginBottom: 12 }}>
+          <h2 style={{ margin: "0 0 6px", color: "var(--text)", fontSize: 21, lineHeight: 1.25, letterSpacing: 0 }}>
+            Set a target in the past to backtest against the actual price, or set a future target to predict.
+          </h2>
+          {onStartTutorial && (
+            <button
+              type="button"
+              onClick={onStartTutorial}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "var(--success)",
+                cursor: "pointer",
+                fontSize: 14,
+                fontWeight: 800,
+                padding: 0,
+              }}
+            >
+              Show me how
+            </button>
+          )}
+        </div>
 
       {/* Timeline slider */}
       <TimelineSlider
@@ -136,12 +164,13 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
           onClick={() => setShowSettings(!showSettings)}
           style={{
             background: "transparent",
-            border: "1px solid #333",
+            border: "1px solid var(--border)",
             borderRadius: 6,
-            padding: "5px 10px",
-            color: showSettings ? "#6c63ff" : "#666",
+            padding: "7px 12px",
+            color: showSettings ? "var(--accent)" : "var(--muted)",
             cursor: "pointer",
-            fontSize: 12,
+            fontSize: 13,
+            fontWeight: 700,
             display: "flex",
             alignItems: "center",
             gap: 4,
@@ -154,14 +183,14 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
           type="submit"
           disabled={loading || !isValid}
           style={{
-            padding: "8px 24px",
+            padding: "10px 28px",
             borderRadius: 6,
             border: "none",
-            background: loading || !isValid ? "#333" : buttonColor,
-            color: loading || !isValid ? "#666" : "#fff",
+            background: loading || !isValid ? "var(--surface-hover)" : buttonColor,
+            color: loading || !isValid ? "var(--muted-2)" : "var(--text-on-accent)",
             cursor: loading || !isValid ? "not-allowed" : "pointer",
-            fontSize: 14,
-            fontWeight: 600,
+            fontSize: 15,
+            fontWeight: 800,
           }}
         >
           {loading ? "Running..." : buttonLabel}
@@ -176,7 +205,7 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
             gap: 16,
             marginTop: 12,
             paddingTop: 12,
-            borderTop: "1px solid #2a2a4a",
+            borderTop: "1px solid var(--border)",
             flexWrap: "wrap",
           }}
         >
@@ -202,7 +231,7 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
           </SettingsField>
 
           <SettingsField label="KDE Smooth" tooltip="Apply Gaussian Kernel Density Estimation to smooth the final probability distribution. Produces a cleaner curve but may slightly shift the peak. Useful when the raw distribution has noise from sparse option data.">
-            <label style={{ display: "flex", alignItems: "center", gap: 6, color: "#ccc", fontSize: 12 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-soft)", fontSize: 13 }}>
               <input
                 type="checkbox"
                 checked={kde}
@@ -222,18 +251,18 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
 function SettingsField({ label, tooltip, children }: { label: string; tooltip?: string; children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 3 }} title={tooltip}>
-      <label style={{ fontSize: 10, color: "#888", cursor: tooltip ? "help" : undefined, borderBottom: tooltip ? "1px dotted #444" : undefined, display: "inline", alignSelf: "flex-start" }}>{label}</label>
+      <label style={{ fontSize: 12, color: "var(--muted)", cursor: tooltip ? "help" : undefined, borderBottom: tooltip ? "1px dotted var(--border-strong)" : undefined, display: "inline", alignSelf: "flex-start", fontWeight: 700 }}>{label}</label>
       {children}
     </div>
   );
 }
 
 const settingsInputStyle: React.CSSProperties = {
-  padding: "5px 8px",
+  padding: "7px 10px",
   borderRadius: 6,
-  border: "1px solid #333",
-  background: "#0f0f1a",
-  color: "#e0e0e0",
-  fontSize: 12,
-  width: 100,
+  border: "1px solid var(--border-strong)",
+  background: "var(--input-bg)",
+  color: "var(--text)",
+  fontSize: 13,
+  width: 108,
 };

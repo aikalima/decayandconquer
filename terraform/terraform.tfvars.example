@@ -4,6 +4,7 @@ massive_api_key  = "your-massive-api-key"
 anthropic_api_key = "sk-ant-..."
 
 # Optional
+anthropic_model  = "claude-sonnet-4-6"   # Claude model for Dacey chat
 google_api_key   = ""                    # For Gemini market context feature
 region           = "us-east4"            # Low latency to US markets
 zone             = "us-east4-c"

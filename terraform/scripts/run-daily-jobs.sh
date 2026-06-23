@@ -32,30 +32,13 @@ echo "--- Updating flat files ---"
 $VENV programs/update_flat_files.py || echo "WARNING: Flat file update failed"
 
 # ---------------------------------------------------------------
-# 3. Theta scans — compute days-forward for 3 target Fridays
-#    Friday of the following week, +14d, +45d
+# 3. Theta scans — run configured target expiries
 # ---------------------------------------------------------------
-NEXT_FRI=$($VENV -c "
-from datetime import date, timedelta
-today = date.today()
-days_to_friday = (4 - today.weekday()) % 7
-if days_to_friday == 0:
-    days_to_friday = 7
-# Following week's Friday
-following_friday = today + timedelta(days=days_to_friday + 7)
-print((following_friday - today).days)
-")
-
 echo ""
-echo "--- Theta scans (days-forward: $NEXT_FRI, $((NEXT_FRI + 14)), $((NEXT_FRI + 45))) ---"
-
-for DF in $NEXT_FRI $((NEXT_FRI + 14)) $((NEXT_FRI + 45)); do
-  echo ""
-  echo "Scanning --top 100 --days-forward $DF"
-  $VENV programs/run_theta_scan.py --top 100 --days-forward "$DF" || {
-    echo "WARNING: Theta scan for days_forward=$DF failed, continuing..."
-  }
-done
+echo "--- Theta scans from config/theta_scans.yaml ---"
+$VENV programs/run_theta_scan.py --config config/theta_scans.yaml || {
+  echo "WARNING: One or more configured theta scans failed, continuing..."
+}
 
 # ---------------------------------------------------------------
 # 4. Restart API

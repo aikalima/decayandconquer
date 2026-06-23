@@ -25,10 +25,8 @@ export default function AppLayout() {
         display: "flex",
         flexDirection: "column",
         height: "100vh",
-        background: "#0f0f1a",
-        color: "#e0e0e0",
-        fontFamily:
-          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        background: "var(--bg)",
+        color: "var(--text)",
       }}
     >
       <Header />
@@ -39,7 +37,7 @@ export default function AppLayout() {
             flex: 1,
             overflowY: "auto",
             overflowX: "hidden",
-            padding: 24,
+            padding: "28px 32px",
             scrollbarWidth: "none",
           }}
         >
@@ -55,15 +53,15 @@ export default function AppLayout() {
             top: "50%",
             transform: "translateY(-50%)",
             zIndex: 100,
-            background: chatOpen ? "#2a2a4a" : "#6c63ff",
-            border: "none",
+            background: chatOpen ? "var(--surface-hover)" : "var(--accent)",
+            border: chatOpen ? "1px solid var(--border)" : "none",
             borderRadius: "8px 0 0 8px",
             padding: "12px 6px",
             cursor: "pointer",
             fontSize: 18,
-            color: "#fff",
+            color: chatOpen ? "var(--accent)" : "var(--text-on-accent)",
             transition: "right 0.2s ease",
-            boxShadow: chatOpen ? "none" : "-2px 0 8px rgba(108,99,255,0.3)",
+            boxShadow: chatOpen ? "none" : "var(--shadow-soft)",
           }}
           title={chatOpen ? "Close chat" : "Ask Dacey"}
         >

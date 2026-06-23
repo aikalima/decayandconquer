@@ -136,13 +136,19 @@ python programs/run_theta_scan.py --tickers AAPL,MSFT,NVDA,TSLA
 # Custom DTE and HV lookback (how many trading days to compute historical volatility)
 python programs/run_theta_scan.py --top 200 --days-forward 45 --hv-days 30
 
+# Run all configured theta scans
+python programs/run_theta_scan.py --config config/theta_scans.yaml
+
+# On the GCP VM, stop/start decay-api around the configured batch
+python programs/run_theta_scan.py --config config/theta_scans.yaml --manage-service
+
 # Purge theta scan data
 python programs/purge_theta.py                  # delete all theta data
 python programs/purge_theta.py --days 30        # delete only 30-day DTE scans
 python programs/purge_theta.py --dry-run        # preview what would be deleted
 ```
 
-Results are stored in `theta_scans` and `theta_results` DuckDB tables. The API serves the latest scan at `GET /theta-plays`.
+Configured scans live in `backend/config/theta_scans.yaml`. Prefer `expiry: YYYY-MM-DD` there; the script computes `days_forward` at runtime. Results are stored in `theta_scans` and `theta_results` DuckDB tables. The API serves the latest scan at `GET /theta-plays`.
 
 ### Backtesting
 
@@ -252,6 +258,7 @@ cd terraform
 # 1. Configure variables
 cp terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars with your project ID, API keys, etc.
+# Optional: set anthropic_model = "claude-sonnet-4-6"
 
 # 2. Initialize and apply
 terraform init
@@ -285,14 +292,52 @@ tail -f /var/log/decay/cron.log
 sudo certbot --nginx -d yourdomain.com
 ```
 
+### GCP Ops Commands
+
+Log in to the VM:
+
+```bash
+ssh decay@136.107.127.41
+cd /opt/decay_core/backend
+```
+
+Preview the configured theta scans without spending API calls:
+
+```bash
+.venv/bin/python programs/run_theta_scan.py --config config/theta_scans.yaml --dry-run
+```
+
+Run the configured theta scans. This stops `decay-api` before writing to DuckDB and starts it again afterward:
+
+```bash
+.venv/bin/python programs/run_theta_scan.py --config config/theta_scans.yaml --manage-service
+```
+
+Pull the newest options flat files from Massive and import them into DuckDB:
+
+```bash
+sudo systemctl stop decay-api
+.venv/bin/python programs/update_flat_files.py --dry-run
+.venv/bin/python programs/update_flat_files.py
+sudo systemctl start decay-api
+```
+
+Run the full daily maintenance workflow manually. This updates flat files, imports options data, runs configured theta scans, and restarts the API:
+
+```bash
+/opt/decay_core/scripts/run-daily-jobs.sh
+```
+
 ### Redeploy Code Updates
 
 ```bash
-ssh decay@$(terraform output -raw external_ip)
-cd /opt/decay_core
-git pull
-cd frontend && npm run build
-sudo systemctl restart decay-api
+scripts/deploy-gcp.sh
+```
+
+The deploy script assumes `options.duckdb` already exists on the VM at `/data/decay/db/options.duckdb`. It pulls the current branch on the VM, installs backend dependencies, rebuilds the frontend, restarts `decay-api`, and runs health checks. Override defaults with environment variables, for example:
+
+```bash
+DEPLOY_HOST=136.107.127.41 DEPLOY_BRANCH=terraform scripts/deploy-gcp.sh
 ```
 
 ### Daily Scheduled Jobs
@@ -301,7 +346,7 @@ The cron runs at **9:30 UTC (5:30 AM ET)** on weekdays:
 
 1. Stops the API (~10 min downtime)
 2. Downloads and imports new flat files
-3. Runs theta scans for 3 expiry windows (100 tickers each)
+3. Runs theta scans from `backend/config/theta_scans.yaml`
 4. Restarts the API
 
 Logs: `/var/log/decay/cron.log`

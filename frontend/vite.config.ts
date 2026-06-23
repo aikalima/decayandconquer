@@ -6,5 +6,16 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 6161,
+    proxy: {
+      "/chat": "http://localhost:6173",
+      "/predict": "http://localhost:6173",
+      "/predict-stream": "http://localhost:6173",
+      "/market-context": "http://localhost:6173",
+      "/theta-plays": "http://localhost:6173",
+      "/theta-expiries": "http://localhost:6173",
+      "/heatmap-stream": "http://localhost:6173",
+      "/theta-plays-stream": "http://localhost:6173",
+      "/ping": "http://localhost:6173",
+    },
   },
 })

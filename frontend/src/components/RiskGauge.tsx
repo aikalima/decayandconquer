@@ -31,10 +31,10 @@ export default function RiskGauge({ data, spot, predicted, realized }: Props) {
   const pct = (v: number) => ((v - min) / range) * 100;
 
   return (
-    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: "14px 16px" }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "16px 18px", boxShadow: "var(--shadow-soft)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-        <span style={{ fontSize: 12, color: "#888" }}>Price Distribution Range</span>
-        <span style={{ fontSize: 11, color: "#666" }}>
+        <span style={{ fontSize: 13, color: "var(--muted)", fontWeight: 750 }}>Price Distribution Range</span>
+        <span style={{ fontSize: 12, color: "var(--muted)" }}>
           ${min.toFixed(0)} to ${max.toFixed(0)}
         </span>
       </div>
@@ -45,25 +45,25 @@ export default function RiskGauge({ data, spot, predicted, realized }: Props) {
           height: 32,
           borderRadius: 4,
           overflow: "hidden",
-          background: "#0f0f1a",
+          background: "var(--input-bg)",
         }}
       >
         {/* Tail zones */}
-        <Zone left={0} width={pct(p5)} color="rgba(231, 76, 60, 0.3)" />
-        <Zone left={pct(p95)} width={100 - pct(p95)} color="rgba(231, 76, 60, 0.3)" />
+        <Zone left={0} width={pct(p5)} color="var(--danger-soft)" />
+        <Zone left={pct(p95)} width={100 - pct(p95)} color="var(--danger-soft)" />
 
         {/* 90% CI zones */}
-        <Zone left={pct(p5)} width={pct(p25) - pct(p5)} color="rgba(241, 196, 15, 0.3)" />
-        <Zone left={pct(p75)} width={pct(p95) - pct(p75)} color="rgba(241, 196, 15, 0.3)" />
+        <Zone left={pct(p5)} width={pct(p25) - pct(p5)} color="var(--warning-soft)" />
+        <Zone left={pct(p75)} width={pct(p95) - pct(p75)} color="var(--warning-soft)" />
 
         {/* 50% CI (core) */}
-        <Zone left={pct(p25)} width={pct(p75) - pct(p25)} color="rgba(46, 204, 113, 0.35)" />
+        <Zone left={pct(p25)} width={pct(p75) - pct(p25)} color="var(--success-soft)" />
 
         {/* Markers */}
-        <Marker position={pct(spot)} color="#e74c3c" label="Spot" />
-        <Marker position={pct(predicted)} color="#f1c40f" label="Pred" />
+        <Marker position={pct(spot)} color="var(--danger)" label="Spot" />
+        <Marker position={pct(predicted)} color="var(--warning)" label="Pred" />
         {realized != null && (
-          <Marker position={pct(realized)} color="#2ecc71" label="Actual" />
+          <Marker position={pct(realized)} color="var(--success)" label="Actual" />
         )}
       </div>
 
@@ -72,15 +72,15 @@ export default function RiskGauge({ data, spot, predicted, realized }: Props) {
           display: "flex",
           justifyContent: "space-between",
           marginTop: 6,
-          fontSize: 10,
-          color: "#555",
+          fontSize: 11,
+          color: "var(--muted)",
         }}
       >
-        <span style={{ color: "#e74c3c99" }}>P5: ${p5.toFixed(0)}</span>
-        <span style={{ color: "#f1c40f99" }}>P25: ${p25.toFixed(0)}</span>
-        <span style={{ color: "#aaa" }}>Median: ${predicted.toFixed(0)}</span>
-        <span style={{ color: "#f1c40f99" }}>P75: ${p75.toFixed(0)}</span>
-        <span style={{ color: "#e74c3c99" }}>P95: ${p95.toFixed(0)}</span>
+        <span style={{ color: "var(--danger)" }}>P5: ${p5.toFixed(0)}</span>
+        <span style={{ color: "var(--warning)" }}>P25: ${p25.toFixed(0)}</span>
+        <span style={{ color: "var(--text-soft)" }}>Median: ${predicted.toFixed(0)}</span>
+        <span style={{ color: "var(--warning)" }}>P75: ${p75.toFixed(0)}</span>
+        <span style={{ color: "var(--danger)" }}>P95: ${p95.toFixed(0)}</span>
       </div>
     </div>
   );
@@ -120,7 +120,7 @@ function Marker({ position, color, label }: { position: number; color: string; l
           top: -14,
           left: "50%",
           transform: "translateX(-50%)",
-          fontSize: 9,
+          fontSize: 10,
           color,
           fontWeight: 600,
           whiteSpace: "nowrap",

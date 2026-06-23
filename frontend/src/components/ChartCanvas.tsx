@@ -99,13 +99,13 @@ export default function ChartCanvas({ toolResults }: Props) {
           alignItems: "center",
           justifyContent: "center",
           height: "100%",
-          color: "#444",
-          fontSize: 13,
+          color: "var(--muted)",
+          fontSize: 14,
         }}
       >
         <div style={{ fontSize: 48, marginBottom: 12 }}>📊</div>
         <p>Charts will appear here when you ask about stocks.</p>
-        <p style={{ fontSize: 11, color: "#333" }}>
+        <p style={{ fontSize: 12, color: "var(--muted-2)" }}>
           Try: "What's SPY's prediction for August based on May data?"
         </p>
       </div>
@@ -118,7 +118,7 @@ export default function ChartCanvas({ toolResults }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, overflow: "auto", padding: "0 4px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h3 style={{ margin: 0, fontSize: 15, color: "#ccc" }}>{latest.label}</h3>
+        <h3 style={{ margin: 0, fontSize: 16, color: "var(--text)" }}>{latest.label}</h3>
         <div style={{ display: "flex", gap: 6 }}>
           {([50, 90] as const).map((level) => (
             <button
@@ -127,11 +127,11 @@ export default function ChartCanvas({ toolResults }: Props) {
               style={{
                 padding: "3px 10px",
                 borderRadius: 4,
-                border: `1px solid ${ciLevel === level ? "#6c63ff" : "#333"}`,
-                background: ciLevel === level ? "#6c63ff" : "transparent",
-                color: ciLevel === level ? "#fff" : "#666",
+                border: `1px solid ${ciLevel === level ? "var(--accent)" : "var(--border)"}`,
+                background: ciLevel === level ? "var(--accent)" : "transparent",
+                color: ciLevel === level ? "var(--text-on-accent)" : "var(--muted)",
                 cursor: "pointer",
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 600,
               }}
             >
@@ -168,8 +168,8 @@ export default function ChartCanvas({ toolResults }: Props) {
 
       {/* If comparing multiple tickers, show a mini summary grid */}
       {charts.length > 1 && (
-        <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 12 }}>
-          <h4 style={{ margin: "0 0 8px", fontSize: 13, color: "#888" }}>All Predictions</h4>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 14 }}>
+          <h4 style={{ margin: "0 0 8px", fontSize: 14, color: "var(--muted)" }}>All Predictions</h4>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
             {charts.map((c, i) => (
               <div
@@ -177,16 +177,16 @@ export default function ChartCanvas({ toolResults }: Props) {
                 style={{
                   padding: 8,
                   borderRadius: 6,
-                  background: c === latest ? "#2a2a4a" : "#0f0f1a",
-                  border: `1px solid ${c === latest ? "#6c63ff" : "#222"}`,
-                  fontSize: 11,
+                  background: c === latest ? "var(--surface-hover)" : "var(--surface-subtle)",
+                  border: `1px solid ${c === latest ? "var(--accent)" : "var(--border)"}`,
+                  fontSize: 12,
                 }}
               >
-                <div style={{ fontWeight: 600, color: "#ccc", marginBottom: 4 }}>{c.ticker}</div>
-                <div style={{ color: "#888" }}>
+                <div style={{ fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>{c.ticker}</div>
+                <div style={{ color: "var(--muted)" }}>
                   Median: ${c.predicted.toFixed(0)}
                   {c.realized != null && (
-                    <span style={{ color: "#2ecc71" }}> | Actual: ${c.realized.toFixed(0)}</span>
+                    <span style={{ color: "var(--success)" }}> | Actual: ${c.realized.toFixed(0)}</span>
                   )}
                 </div>
               </div>

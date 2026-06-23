@@ -69,6 +69,7 @@ export default function TimelineSlider({
   const [target, setTarget] = useState<number | null>(() =>
     initialTarget ? dateToDayIndex(initialTarget) : null
   );
+  const [isPanning, setIsPanning] = useState(false);
 
   const dragging = useRef<"left" | "right" | "range" | "target" | "pan" | null>(null);
   const dragStart = useRef({ x: 0, fromDay: 0, toDay: 0, panOffset: 0 });
@@ -93,7 +94,10 @@ export default function TimelineSlider({
     const rightEdge = target !== null ? target : obsTo;
     const centerDay = (obsFrom + rightEdge) / 2;
     const centerX = (centerDay / TOTAL_DAYS) * TRACK_TOTAL_WIDTH;
-    setPanOffset(-(centerX - containerWidth / 2));
+    const frame = requestAnimationFrame(() => {
+      setPanOffset(-(centerX - containerWidth / 2));
+    });
+    return () => cancelAnimationFrame(frame);
   }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dayToX = useCallback((d: number) => (d / TOTAL_DAYS) * TRACK_TOTAL_WIDTH + panOffset, [panOffset]);
@@ -129,6 +133,7 @@ export default function TimelineSlider({
       // Only start pan if clicking on empty track area (not on a handle or range)
       if (dragging.current) return;
       dragging.current = "pan";
+      setIsPanning(true);
       wasDragging.current = false;
       dragStart.current = { x: e.clientX, fromDay: obsFrom, toDay: obsTo, panOffset };
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -187,6 +192,7 @@ export default function TimelineSlider({
 
   const handlePointerUp = useCallback(() => {
     dragging.current = null;
+    setIsPanning(false);
   }, []);
 
   const handleClick = useCallback(
@@ -208,7 +214,7 @@ export default function TimelineSlider({
   const targetX = target !== null ? dayToX(target) : null;
   const todayX = dayToX(todayIndex());
   const targetIsFuture = target !== null && isFuture(target);
-  const targetColor = targetIsFuture ? "#2ecc71" : "#e67e22";
+  const targetColor = targetIsFuture ? "var(--success)" : "var(--orange)";
 
   // Month ticks
   const monthTicks: { x: number; label: string; isYear: boolean }[] = [];
@@ -224,13 +230,13 @@ export default function TimelineSlider({
   }
 
   return (
-    <div style={{ position: "relative", padding: "12px 0 8px", userSelect: "none", minHeight: 120 }}>
+    <div style={{ position: "relative", padding: "14px 0 8px", userSelect: "none", minHeight: 128 }}>
       {/* Date labels */}
-      <div style={{ position: "relative", height: 18, marginBottom: 2 }}>
-        <div style={{ position: "absolute", left: 0, fontSize: 10, color: "#6c63ff", fontWeight: 600 }}>
+      <div style={{ position: "relative", height: 22, marginBottom: 4 }}>
+        <div style={{ position: "absolute", left: 0, fontSize: 12, color: "var(--accent)", fontWeight: 750 }}>
           Observe: {formatShort(obsFrom)} to {formatShort(obsTo)}
         </div>
-        <div style={{ position: "absolute", right: 0, fontSize: 10, color: target !== null ? targetColor : "#555", fontWeight: 600 }}>
+        <div style={{ position: "absolute", right: 0, fontSize: 12, color: target !== null ? targetColor : "var(--muted)", fontWeight: 750 }}>
           {target !== null
             ? `Target: ${formatShort(target)} ${targetIsFuture ? "(prediction)" : "(backtest)"}`
             : "Click right of range to set target date"
@@ -248,7 +254,7 @@ export default function TimelineSlider({
         style={{
           position: "relative",
           overflow: "hidden",
-          cursor: dragging.current === "pan" ? "grabbing" : "grab",
+          cursor: isPanning ? "grabbing" : "grab",
           touchAction: "none",
           paddingTop: 20,
           paddingBottom: 4,
@@ -259,20 +265,21 @@ export default function TimelineSlider({
           ref={trackRef}
           style={{
             position: "relative",
-            height: 8,
-            background: "#0f0f1a",
+            height: 10,
+            background: "var(--input-bg)",
+            border: "1px solid var(--border)",
             borderRadius: 4,
           }}
         >
           {/* Today line - full height */}
           <div style={{
             position: "absolute", left: todayX, top: -20, width: 2, height: 64,
-            background: "#2ecc71", opacity: 0.6, pointerEvents: "none", zIndex: 1,
+            background: "var(--success)", opacity: 0.65, pointerEvents: "none", zIndex: 1,
             borderRadius: 1,
           }} />
           <div style={{
-            position: "absolute", left: todayX + 5, top: -18, fontSize: 9,
-            color: "#2ecc71", fontWeight: 600, pointerEvents: "none", zIndex: 1,
+            position: "absolute", left: todayX + 5, top: -20, fontSize: 11,
+            color: "var(--success)", fontWeight: 750, pointerEvents: "none", zIndex: 1,
           }}>
             Today
           </div>
@@ -283,14 +290,14 @@ export default function TimelineSlider({
             onPointerDown={(e) => handlePointerDown("range", e)}
             style={{
               position: "absolute", left: fromX, width: Math.max(toX - fromX, 2), height: "100%",
-              background: "linear-gradient(90deg, #6c63ff, #4a90d9)", borderRadius: 4,
+              background: "linear-gradient(90deg, var(--accent), var(--blue))", borderRadius: 4,
               cursor: "grab", zIndex: 2,
             }}
           />
 
           {/* Handles */}
-          <Handle x={fromX} onPointerDown={(e) => handlePointerDown("left", e)} color="#6c63ff" />
-          <Handle x={toX} onPointerDown={(e) => handlePointerDown("right", e)} color="#6c63ff" />
+          <Handle x={fromX} onPointerDown={(e) => handlePointerDown("left", e)} color="var(--accent)" />
+          <Handle x={toX} onPointerDown={(e) => handlePointerDown("right", e)} color="var(--accent)" />
           {target !== null && targetX !== null && (
             <Handle x={targetX} onPointerDown={(e) => handlePointerDown("target", e)} color={targetColor} dataTutorial="target-dot" />
           )}
@@ -298,7 +305,7 @@ export default function TimelineSlider({
           {/* Event markers */}
           {events.map((evt, i) => {
             const evtX = dayToX(dateToDayIndex(evt.date));
-            const color = CATEGORY_COLORS[evt.category] || "#888";
+            const color = CATEGORY_COLORS[evt.category] || "var(--muted)";
             const isHovered = hoveredEventIndex === i;
             return (
               <div key={`evt-${i}`} style={{ position: "absolute", left: evtX, top: -20, pointerEvents: "none", zIndex: 1 }}>
@@ -323,7 +330,7 @@ export default function TimelineSlider({
                     height: isHovered ? 12 : 10,
                     borderRadius: "50%",
                     background: color,
-                    border: "1.5px solid #0f0f1a",
+                    border: "1.5px solid var(--input-bg)",
                     cursor: "pointer",
                     pointerEvents: "auto",
                     transition: "all 0.15s",
@@ -339,11 +346,11 @@ export default function TimelineSlider({
         <div style={{ position: "relative", height: 22, marginTop: 6 }}>
           {monthTicks.map((t, i) => (
             <div key={i} style={{ position: "absolute", left: t.x, pointerEvents: "none" }}>
-              <div style={{ width: 1, height: t.isYear ? 10 : 6, background: t.isYear ? "#666" : "#444" }} />
+              <div style={{ width: 1, height: t.isYear ? 10 : 6, background: t.isYear ? "var(--muted)" : "var(--border-strong)" }} />
               <span style={{
-                fontSize: t.isYear ? 10 : 9,
-                color: t.isYear ? "#aaa" : "#666",
-                fontWeight: t.isYear ? 600 : 400,
+                fontSize: t.isYear ? 11 : 10,
+                color: t.isYear ? "var(--text-soft)" : "var(--muted)",
+                fontWeight: t.isYear ? 750 : 500,
                 position: "absolute", top: t.isYear ? 10 : 7, left: -8, whiteSpace: "nowrap",
               }}>
                 {t.label}
@@ -354,7 +361,7 @@ export default function TimelineSlider({
       </div>
 
       {/* Hint */}
-      <div style={{ fontSize: 10, color: "#555", marginTop: 4, textAlign: "center" }}>
+      <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, textAlign: "center" }}>
         Drag to pan timeline. Purple handles for observation window. Orange/green handle or click for target date.
       </div>
     </div>
@@ -384,7 +391,7 @@ function Handle({
         height: 16,
         borderRadius: "50%",
         background: color,
-        border: "2px solid #0f0f1a",
+        border: "2px solid var(--input-bg)",
         cursor: "ew-resize",
         zIndex: 3,
         touchAction: "none",

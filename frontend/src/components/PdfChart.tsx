@@ -11,6 +11,7 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 import type { PredictionData } from "../types/prediction";
+import { useChartTheme } from "../themeContext";
 
 ChartJS.register(
   LineElement,
@@ -49,6 +50,7 @@ function interpCdf(target: number, cdf: number[], prices: number[]): number {
 }
 
 export default React.memo(function PdfChart({ data, spot, realized, predicted, ciLevel = 90, onCiLevelChange }: Props) {
+  const colors = useChartTheme();
   const step = Math.max(1, Math.floor(data.prices.length / 500));
   const prices = data.prices.filter((_, i) => i % step === 0);
   const pdf = data.pdf.filter((_, i) => i % step === 0);
@@ -66,27 +68,27 @@ export default React.memo(function PdfChart({ data, spot, realized, predicted, c
   );
 
   return (
-    <div style={{ background: "#1a1a2e", borderRadius: 8, padding: 16, minHeight: 300 }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 18, minHeight: 320, boxShadow: "var(--shadow-soft)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <h3 style={{ margin: 0, fontSize: 15, color: "#ccc" }}>
+        <h3 className="dashboard-section-title">
           Predicted Range
         </h3>
         {onCiLevelChange && (
           <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
-            <span style={{ fontSize: 10, color: "#666", marginRight: 2 }}>Chance price lands in shaded range:</span>
+            <span style={{ fontSize: 12, color: "var(--muted)", marginRight: 2 }}>Chance price lands in shaded range:</span>
             {([{ level: 50 as const, label: "Coin flip (50%)" }, { level: 90 as const, label: "Near certain (90%)" }]).map(({ level, label }) => (
               <button
                 key={level}
                 onClick={() => onCiLevelChange(level)}
                 style={{
-                  padding: "3px 8px",
+                  padding: "5px 10px",
                   borderRadius: 4,
-                  border: `1px solid ${ciLevel === level ? "#6c63ff" : "#333"}`,
-                  background: ciLevel === level ? "#6c63ff" : "transparent",
-                  color: ciLevel === level ? "#fff" : "#888",
+                  border: `1px solid ${ciLevel === level ? "var(--accent)" : "var(--border)"}`,
+                  background: ciLevel === level ? "var(--accent)" : "transparent",
+                  color: ciLevel === level ? "var(--text-on-accent)" : "var(--muted)",
                   cursor: "pointer",
-                  fontSize: 10,
-                  fontWeight: 600,
+                  fontSize: 12,
+                  fontWeight: 750,
                 }}
               >
                 {label}
@@ -95,7 +97,7 @@ export default React.memo(function PdfChart({ data, spot, realized, predicted, c
           </div>
         )}
       </div>
-      <p style={{ margin: "0 0 12px", fontSize: 11, color: "#666" }}>
+      <p className="dashboard-caption" style={{ margin: "0 0 14px" }}>
         The market-implied range of likely prices. The peak is the most probable outcome;
         the shaded area covers the confidence interval.
       </p>
@@ -107,7 +109,7 @@ export default React.memo(function PdfChart({ data, spot, realized, predicted, c
               label: "90% CI",
               data: pdfInside,
               borderColor: "transparent",
-              backgroundColor: "rgba(168, 130, 255, 0.22)",
+              backgroundColor: colors.fill,
               fill: true,
               pointRadius: 0,
               borderWidth: 0,
@@ -117,7 +119,7 @@ export default React.memo(function PdfChart({ data, spot, realized, predicted, c
               label: "Tails",
               data: pdfOutside,
               borderColor: "transparent",
-              backgroundColor: "rgba(168, 130, 255, 0.06)",
+              backgroundColor: colors.fillSoft,
               fill: true,
               pointRadius: 0,
               borderWidth: 0,
@@ -126,7 +128,7 @@ export default React.memo(function PdfChart({ data, spot, realized, predicted, c
             {
               label: "PDF",
               data: pdf,
-              borderColor: "#4a90d9",
+              borderColor: colors.blue,
               backgroundColor: "transparent",
               fill: false,
               pointRadius: 0,
@@ -151,14 +153,14 @@ export default React.memo(function PdfChart({ data, spot, realized, predicted, c
           scales: {
             x: {
               type: "category",
-              title: { display: true, text: "Predicted Price ($)", color: "#888" },
-              ticks: { color: "#666", maxTicksLimit: 10 },
-              grid: { color: "#222" },
+              title: { display: true, text: "Predicted Price ($)", color: colors.muted, font: { size: 12, weight: 600 } },
+              ticks: { color: colors.subtle, maxTicksLimit: 10, font: { size: 12 } },
+              grid: { color: colors.grid },
             },
             y: {
-              title: { display: true, text: "Likelihood", color: "#888" },
-              ticks: { color: "#666" },
-              grid: { color: "#222" },
+              title: { display: true, text: "Likelihood", color: colors.muted, font: { size: 12, weight: 600 } },
+              ticks: { color: colors.subtle, font: { size: 12 } },
+              grid: { color: colors.grid },
             },
           },
           animation: {
@@ -173,7 +175,7 @@ export default React.memo(function PdfChart({ data, spot, realized, predicted, c
               // 90% CI boundary lines (subtle)
               for (const bound of [pLow, pHigh]) {
                 const bx = xScale.getPixelForValue(findIdx(prices, bound));
-                ctx.strokeStyle = "rgba(168, 130, 255, 0.35)";
+                ctx.strokeStyle = colors.accent;
                 ctx.lineWidth = 1;
                 ctx.setLineDash([3, 3]);
                 ctx.beginPath();
@@ -183,35 +185,35 @@ export default React.memo(function PdfChart({ data, spot, realized, predicted, c
               }
               // CI label
               const pLowX = xScale.getPixelForValue(findIdx(prices, pLow));
-              ctx.fillStyle = "rgba(168, 130, 255, 0.7)";
-              ctx.font = "10px sans-serif";
+              ctx.fillStyle = colors.accent;
+              ctx.font = "12px sans-serif";
               ctx.setLineDash([]);
               ctx.fillText(`${ciLevel}% CI: $${pLow.toFixed(0)}–$${pHigh.toFixed(0)}`, pLowX + 4, yBottom - 6);
 
               // Spot price line (red dashed)
               const spotX = xScale.getPixelForValue(findIdx(prices, spot));
-              ctx.strokeStyle = "#e74c3c";
+              ctx.strokeStyle = colors.danger;
               ctx.lineWidth = 1.5;
               ctx.setLineDash([6, 4]);
               ctx.beginPath();
               ctx.moveTo(spotX, yTop);
               ctx.lineTo(spotX, yBottom);
               ctx.stroke();
-              ctx.fillStyle = "#e74c3c";
-              ctx.font = "11px sans-serif";
+              ctx.fillStyle = colors.danger;
+              ctx.font = "12px sans-serif";
               ctx.fillText(`Spot $${spot.toFixed(0)}`, spotX + 4, yTop + 14);
 
               // Predicted median line (green dashed)
               if (predicted != null) {
                 const predX = xScale.getPixelForValue(findIdx(prices, predicted));
-                ctx.strokeStyle = "#2ecc71";
+                ctx.strokeStyle = colors.success;
                 ctx.lineWidth = 1.5;
                 ctx.setLineDash([4, 3]);
                 ctx.beginPath();
                 ctx.moveTo(predX, yTop);
                 ctx.lineTo(predX, yBottom);
                 ctx.stroke();
-                ctx.fillStyle = "#2ecc71";
+                ctx.fillStyle = colors.success;
                 ctx.setLineDash([]);
                 ctx.fillText(`Predicted $${predicted.toFixed(0)}`, predX + 4, yTop + 42);
               }
@@ -219,14 +221,14 @@ export default React.memo(function PdfChart({ data, spot, realized, predicted, c
               // Realized price line (cyan solid)
               if (realized != null) {
                 const realX = xScale.getPixelForValue(findIdx(prices, realized));
-                ctx.strokeStyle = "#00d2ff";
+                ctx.strokeStyle = colors.cyan;
                 ctx.lineWidth = 2;
                 ctx.setLineDash([]);
                 ctx.beginPath();
                 ctx.moveTo(realX, yTop);
                 ctx.lineTo(realX, yBottom);
                 ctx.stroke();
-                ctx.fillStyle = "#00d2ff";
+                ctx.fillStyle = colors.cyan;
                 ctx.fillText(`Actual $${realized.toFixed(0)}`, realX + 4, yTop + 28);
               }
 

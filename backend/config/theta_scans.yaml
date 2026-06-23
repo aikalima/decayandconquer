@@ -1,0 +1,15 @@
+# Batch theta scan targets.
+# The scanner computes days_forward from each expiry at runtime.
+defaults:
+  top: 100
+  hv_days: same_as_days_forward
+
+scans:
+  - name: July monthly expiry
+    expiry: 2026-07-17
+
+  - name: August monthly expiry
+    expiry: 2026-08-21
+
+  - name: September monthly expiry
+    expiry: 2026-09-18

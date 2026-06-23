@@ -19,13 +19,13 @@ export default function Sidebar() {
   return (
     <nav
       style={{
-        width: 220,
-        background: "#16162a",
-        borderRight: "1px solid #2a2a4a",
-        padding: "20px 0",
+        width: 244,
+        background: "var(--surface-subtle)",
+        borderRight: "1px solid var(--border)",
+        padding: "22px 0",
         display: "flex",
         flexDirection: "column",
-        gap: 4,
+        gap: 6,
       }}
     >
       {NAV_ITEMS.map((item) => {
@@ -42,14 +42,15 @@ export default function Sidebar() {
               display: "flex",
               alignItems: "center",
               gap: 10,
-              padding: "10px 20px",
+              padding: "12px 22px",
               border: "none",
-              background: active ? "#2a2a4a" : "transparent",
-              color: item.disabled ? "#555" : active ? "#fff" : "#aaa",
+              background: active ? "var(--surface-hover)" : "transparent",
+              color: item.disabled ? "var(--muted-3)" : active ? "var(--text)" : "var(--muted)",
               cursor: item.disabled ? "not-allowed" : "pointer",
-              fontSize: 14,
+              fontSize: 15,
+              fontWeight: active ? 750 : 600,
               textAlign: "left",
-              borderLeft: active ? "3px solid #6c63ff" : "3px solid transparent",
+              borderLeft: active ? "3px solid var(--accent)" : "3px solid transparent",
               opacity: item.disabled ? 0.5 : 1,
             }}
           >
@@ -59,10 +60,10 @@ export default function Sidebar() {
               <span
                 style={{
                   fontSize: 10,
-                  background: "#333",
+                  background: "var(--surface-elevated)",
                   padding: "2px 6px",
                   borderRadius: 4,
-                  color: "#888",
+                  color: "var(--muted)",
                   marginLeft: "auto",
                 }}
               >
