@@ -54,7 +54,6 @@ export default function Tutorial() {
   const [visible, setVisible] = useState(false);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [tooltipRect, setTooltipRect] = useState<DOMRect | null>(null);
-  const [animating, setAnimating] = useState(false);
 
   useEffect(() => {
     _triggerTutorial = () => {
@@ -81,11 +80,6 @@ export default function Tutorial() {
         ? document.querySelector(currentStep.tooltipAnchor)
         : el;
       setTooltipRect(anchorEl ? anchorEl.getBoundingClientRect() : el.getBoundingClientRect());
-      if (currentStep.animation) {
-        setAnimating(true);
-        const t = setTimeout(() => setAnimating(false), 2000);
-        return () => clearTimeout(t);
-      }
     }
   }, [step, visible]);
 

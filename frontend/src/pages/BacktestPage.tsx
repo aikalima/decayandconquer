@@ -103,7 +103,6 @@ export default function BacktestPage() {
 
   const median = data ? computeMedian(data) : 0;
   const isPrediction = meta ? !meta.realized_price : false;
-  const modeLabel = isPrediction ? "Prediction" : "Backtest";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>

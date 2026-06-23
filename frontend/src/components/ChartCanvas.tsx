@@ -1,7 +1,6 @@
 import type { ToolResult } from "../api/client";
 import PdfChart from "./PdfChart";
 import CdfChart from "./CdfChart";
-import IvSmileChart from "./IvSmileChart";
 import RiskGauge from "./RiskGauge";
 import type { PredictionData, IvSmile } from "../types/prediction";
 import { useState } from "react";

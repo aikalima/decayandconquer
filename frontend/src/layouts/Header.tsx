@@ -22,13 +22,3 @@ export default function Header() {
     </header>
   );
 }
-
-const btnStyle: React.CSSProperties = {
-  padding: "6px 16px",
-  borderRadius: 6,
-  border: "1px solid #444",
-  background: "transparent",
-  color: "#ccc",
-  cursor: "pointer",
-  fontSize: 13,
-};

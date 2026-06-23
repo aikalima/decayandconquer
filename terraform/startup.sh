@@ -16,7 +16,7 @@ DEVICE="/dev/disk/by-id/google-decay-data"
 apt-get update -qq
 apt-get install -y -qq python3 python3-venv python3-dev \
   nginx certbot python3-certbot-nginx \
-  git jq flock logrotate
+  git jq logrotate util-linux
 
 # Node.js 20 via NodeSource
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
@@ -182,15 +182,26 @@ chmod 440 /etc/sudoers.d/decay-api
 # ---------------------------------------------------------------
 # 13. Install daily cron job
 # ---------------------------------------------------------------
-cp "$APP_DIR/terraform/scripts/run-daily-jobs.sh" /opt/decay_core/scripts/run-daily-jobs.sh
-chmod +x /opt/decay_core/scripts/run-daily-jobs.sh
-chown "$APP_USER:$APP_USER" /opt/decay_core/scripts/run-daily-jobs.sh
+CRON_SCRIPT_INSTALLED=false
+if [ -f "$APP_DIR/terraform/scripts/run-daily-jobs.sh" ]; then
+  cp "$APP_DIR/terraform/scripts/run-daily-jobs.sh" /opt/decay_core/scripts/run-daily-jobs.sh
+  CRON_SCRIPT_INSTALLED=true
+elif [ -f "$APP_DIR/scripts/run-daily-jobs.sh" ]; then
+  cp "$APP_DIR/scripts/run-daily-jobs.sh" /opt/decay_core/scripts/run-daily-jobs.sh
+  CRON_SCRIPT_INSTALLED=true
+else
+  echo "Daily cron script not found; skipping cron install"
+fi
+if [ "$CRON_SCRIPT_INSTALLED" = true ]; then
+  chmod +x /opt/decay_core/scripts/run-daily-jobs.sh
+  chown "$APP_USER:$APP_USER" /opt/decay_core/scripts/run-daily-jobs.sh
 
-# Run at 9:30 UTC (5:30 AM ET during EDT) weekdays
-cat > /etc/cron.d/decay-daily <<CRONEOF
+  # Run at 9:30 UTC (5:30 AM ET during EDT) weekdays
+  cat > /etc/cron.d/decay-daily <<CRONEOF
 SHELL=/bin/bash
 30 9 * * 1-5 $APP_USER /opt/decay_core/scripts/run-daily-jobs.sh >> /var/log/decay/cron.log 2>&1
 CRONEOF
+fi
 
 # ---------------------------------------------------------------
 # 14. Log rotation

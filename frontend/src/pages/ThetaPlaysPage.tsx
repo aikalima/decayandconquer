@@ -10,6 +10,11 @@ const TABS: { key: Tab; label: string; description: string }[] = [
   { key: "expensive_puts", label: "Expensive Puts", description: "Best puts to sell. Priced expecting the underlying to move down more than it historically has." },
 ];
 
+function numericSortValue(row: ThetaPlayRow, col: string): number {
+  const value = row[col as keyof ThetaPlayRow];
+  return typeof value === "number" ? value : 0;
+}
+
 function formatExpiryDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
   const month = d.toLocaleString("en-US", { month: "long" });
@@ -57,8 +62,8 @@ export default function ThetaPlaysPage() {
   const rows = results ? results[activeTab] : [];
 
   const sorted = [...rows].sort((a, b) => {
-    const av = (a as Record<string, number>)[sortCol] ?? 0;
-    const bv = (b as Record<string, number>)[sortCol] ?? 0;
+    const av = numericSortValue(a, sortCol);
+    const bv = numericSortValue(b, sortCol);
     return sortAsc ? av - bv : bv - av;
   });
 

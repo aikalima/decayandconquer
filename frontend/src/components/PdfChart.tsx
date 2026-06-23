@@ -52,7 +52,6 @@ export default React.memo(function PdfChart({ data, spot, realized, predicted, c
   const step = Math.max(1, Math.floor(data.prices.length / 500));
   const prices = data.prices.filter((_, i) => i % step === 0);
   const pdf = data.pdf.filter((_, i) => i % step === 0);
-  const cdf = data.cdf.filter((_, i) => i % step === 0);
 
   const tailPct = (100 - ciLevel) / 2 / 100; // 50% CI -> 0.25, 90% CI -> 0.05
   const pLow = interpCdf(tailPct, data.cdf, data.prices);

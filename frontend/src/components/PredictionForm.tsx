@@ -228,16 +228,6 @@ function SettingsField({ label, tooltip, children }: { label: string; tooltip?: 
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  padding: "6px 10px",
-  borderRadius: 6,
-  border: "1px solid #333",
-  background: "#0f0f1a",
-  color: "#e0e0e0",
-  fontSize: 13,
-  width: 100,
-};
-
 const settingsInputStyle: React.CSSProperties = {
   padding: "5px 8px",
   borderRadius: 6,
