@@ -24,6 +24,7 @@ from app.data.fetcher import find_nearest_expiry_friday
 logger = logging.getLogger(__name__)
 
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
+RETRYABLE_ANTHROPIC_STATUS_CODES = {500, 502, 503, 504, 529}
 
 SYSTEM_PROMPT = """You are a quantitative finance analyst assistant for the Decay And Conquer options analysis platform.
 
@@ -424,16 +425,34 @@ def _run_chat_anthropic(messages: list[dict]) -> dict:
     claude_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
     tool_results_for_frontend = []
 
+    def _anthropic_request_id(error: Exception) -> str | None:
+        request_id = getattr(error, "request_id", None)
+        if request_id:
+            return str(request_id)
+        response = getattr(error, "response", None)
+        headers = getattr(response, "headers", None)
+        if headers:
+            return headers.get("request-id") or headers.get("x-request-id")
+        return None
+
     def _call_anthropic(**kwargs):
-        """Call Anthropic API with retry on 529 (overloaded)."""
+        """Call Anthropic API with retry on transient server/overload errors."""
         import time as _time
+        delays = [2, 4, 8, 16]
         for attempt in range(5):
             try:
                 return client.messages.create(**kwargs)
             except anthropic.APIStatusError as e:
-                if e.status_code == 529 and attempt < 4:
-                    logger.warning("Anthropic 529 overloaded, retrying in %ds (attempt %d/5)", 3 * (attempt + 1), attempt + 1)
-                    _time.sleep(3 * (attempt + 1))
+                if e.status_code in RETRYABLE_ANTHROPIC_STATUS_CODES and attempt < 4:
+                    delay = delays[attempt]
+                    logger.warning(
+                        "Anthropic %s transient error, retrying in %ds (attempt %d/5, request_id=%s)",
+                        e.status_code,
+                        delay,
+                        attempt + 1,
+                        _anthropic_request_id(e) or "unknown",
+                    )
+                    _time.sleep(delay)
                     continue
                 raise
 
@@ -457,6 +476,24 @@ def _run_chat_anthropic(messages: list[dict]) -> dict:
                 ),
                 "tool_results": tool_results_for_frontend,
             }
+        except anthropic.APIStatusError as e:
+            request_id = _anthropic_request_id(e)
+            logger.exception(
+                "Anthropic API status error after retries: status=%s request_id=%s",
+                e.status_code,
+                request_id or "unknown",
+            )
+            if e.status_code in RETRYABLE_ANTHROPIC_STATUS_CODES:
+                detail = f" Request id: `{request_id}`." if request_id else ""
+                return {
+                    "response": (
+                        "Anthropic is temporarily overloaded or returning server errors. "
+                        "Please try Dacey again in a minute."
+                        f"{detail}"
+                    ),
+                    "tool_results": tool_results_for_frontend,
+                }
+            return {"response": f"Anthropic returned HTTP {e.status_code}.", "tool_results": tool_results_for_frontend}
 
         if response.stop_reason == "tool_use":
             tool_use_blocks = [b for b in response.content if b.type == "tool_use"]

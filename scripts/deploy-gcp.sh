@@ -125,17 +125,35 @@ env VITE_API_BASE="" npm run build
 echo ""
 echo "--- Restart API ---"
 sudo systemctl restart decay-api
-sleep 2
-sudo systemctl --no-pager --full status decay-api | sed -n '1,12p'
 
-echo ""
-echo "--- Health check ---"
-curl -fsS http://127.0.0.1:6173/ping
-echo ""
+echo "Waiting for API health..."
+for attempt in {1..30}; do
+  if curl -fsS http://127.0.0.1:6173/ping; then
+    echo ""
+    break
+  fi
+  if [[ "$attempt" == "30" ]]; then
+    echo "ERROR: API did not become healthy within 30 seconds." >&2
+    sudo systemctl --no-pager --full status decay-api | sed -n '1,40p'
+    exit 1
+  fi
+  sleep 1
+done
+sudo systemctl --no-pager --full status decay-api | sed -n '1,12p'
 REMOTE_SCRIPT
 
 echo ""
 echo "--- Public health check ---"
-curl -fsS "$PUBLIC_URL/ping"
+for attempt in {1..30}; do
+  if curl -fsS "$PUBLIC_URL/ping"; then
+    echo ""
+    break
+  fi
+  if [[ "$attempt" == "30" ]]; then
+    echo "ERROR: public health check did not pass within 30 seconds." >&2
+    exit 1
+  fi
+  sleep 1
+done
 echo ""
 echo "Deploy complete: $PUBLIC_URL"
