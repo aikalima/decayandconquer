@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchThetaPlays, fetchThetaExpiries } from "../api/client";
+import { fetchAppDefaults, fetchThetaPlays, fetchThetaExpiries } from "../api/client";
 import type { ThetaPlayRow, ThetaPlaysResponse, ThetaExpiry } from "../api/client";
 
 type Tab = "highest_premium" | "expensive_calls" | "expensive_puts";
@@ -10,15 +10,18 @@ const TABS: { key: Tab; label: string; description: string }[] = [
   { key: "expensive_puts", label: "Expensive Puts", description: "Best puts to sell. Priced expecting the underlying to move down more than it historically has." },
 ];
 
-const THETA_EXPIRY_OPTIONS: ThetaExpiry[] = [
-  { expiry: "2026-07-17", last_scanned: "", tickers_scanned: 0 },
-  { expiry: "2026-08-21", last_scanned: "", tickers_scanned: 0 },
-  { expiry: "2026-09-18", last_scanned: "", tickers_scanned: 0 },
-];
-
-function thetaExpiryOptions(available: ThetaExpiry[]): ThetaExpiry[] {
+function thetaExpiryOptions(configured: ThetaExpiry[], available: ThetaExpiry[]): ThetaExpiry[] {
   const availableByExpiry = new Map(available.map((exp) => [exp.expiry, exp]));
-  return THETA_EXPIRY_OPTIONS.map((exp) => availableByExpiry.get(exp.expiry) ?? exp);
+  const base = configured.length > 0 ? configured : available;
+  return base.map((exp) => {
+    const scanned = availableByExpiry.get(exp.expiry);
+    return {
+      ...scanned,
+      ...exp,
+      last_scanned: scanned?.last_scanned ?? exp.last_scanned ?? "",
+      tickers_scanned: scanned?.tickers_scanned ?? exp.tickers_scanned ?? 0,
+    };
+  });
 }
 
 function numericSortValue(row: ThetaPlayRow, col: string): number {
@@ -48,10 +51,19 @@ export default function ThetaPlaysPage() {
   const [showAll, setShowAll] = useState(false);
   const [nowMs] = useState(() => Date.now());
 
-  // Load available expiries on mount
   useEffect(() => {
-    fetchThetaExpiries().then((exps) => {
-      const options = thetaExpiryOptions(exps);
+    let cancelled = false;
+
+    Promise.all([fetchAppDefaults(), fetchThetaExpiries()]).then(([defaults, exps]) => {
+      if (cancelled) return;
+      const configured = defaults?.theta.expiries.map((exp) => ({
+        expiry: exp.expiry,
+        name: exp.name,
+        days_forward: exp.days_forward,
+        last_scanned: "",
+        tickers_scanned: 0,
+      })) ?? [];
+      const options = thetaExpiryOptions(configured, exps);
       setExpiries(options);
       if (options.length > 0) {
         setSelectedExpiry(options[0].expiry);
@@ -59,6 +71,10 @@ export default function ThetaPlaysPage() {
         setLoading(false);
       }
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Load results when selected expiry changes
@@ -138,7 +154,8 @@ export default function ThetaPlaysPage() {
             }}
           >
             {expiries.map((exp) => {
-              const days = Math.round((new Date(exp.expiry + "T00:00:00").getTime() - nowMs) / 86400000);
+              const computedDays = Math.round((new Date(exp.expiry + "T00:00:00").getTime() - nowMs) / 86400000);
+              const days = exp.days_forward ?? computedDays;
               return (
                 <option key={exp.expiry} value={exp.expiry}>
                   {formatExpiryDate(exp.expiry)} ({days}d)

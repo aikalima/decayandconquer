@@ -1,6 +1,8 @@
 # Required
 project_id       = "my-gcp-project-id"
 massive_api_key  = "your-massive-api-key"
+massive_s3_access_key = "your-massive-flat-files-s3-access-key"
+massive_s3_secret_key = "your-massive-flat-files-s3-secret-key"
 anthropic_api_key = "sk-ant-..."
 
 # Optional

@@ -35,8 +35,8 @@ $VENV programs/update_flat_files.py || echo "WARNING: Flat file update failed"
 # 3. Theta scans — run configured target expiries
 # ---------------------------------------------------------------
 echo ""
-echo "--- Theta scans from config/theta_scans.yaml ---"
-$VENV programs/run_theta_scan.py --config config/theta_scans.yaml || {
+echo "--- Theta scans from config/app_defaults.json ---"
+$VENV programs/run_theta_scan.py --config config/app_defaults.json || {
   echo "WARNING: One or more configured theta scans failed, continuing..."
 }
 

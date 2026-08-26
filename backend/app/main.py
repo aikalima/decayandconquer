@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Optional, AsyncGenerator
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +31,7 @@ from app.data.fetcher import (
 )
 from app.news import fetch_market_context
 from app.screener import scan_all, DEFAULT_TICKERS
+from app.defaults import build_app_defaults
 from app.data.db import get_latest_theta_scan, get_latest_theta_scan_by_expiry, get_theta_results, get_available_theta_expiries
 
 logging.basicConfig(level=logging.INFO)
@@ -136,6 +138,12 @@ def _get_chains_range(
 async def ping():
     logger.info("ping received")
     return get_ping_response()
+
+
+@app.get("/app-defaults")
+async def app_defaults():
+    """Return date-aware frontend and batch defaults."""
+    return build_app_defaults()
 
 
 @app.post("/chat")
@@ -432,11 +440,14 @@ async def predict_price_stream(
 @app.get("/market-context")
 async def market_context(
     ticker: str = "SPY",
-    obs_from: str = "2025-11-01",
-    obs_to: str = "2026-03-01",
+    obs_from: Optional[str] = None,
+    obs_to: Optional[str] = None,
 ):
     """Fetch AI-generated market context for the observation period."""
     try:
+        defaults = build_app_defaults()["prediction"]
+        obs_from = obs_from or defaults["obs_date_from"]
+        obs_to = obs_to or defaults["obs_date_to"]
         events = fetch_market_context(ticker, obs_from, obs_to)
         return {
             "events": events,

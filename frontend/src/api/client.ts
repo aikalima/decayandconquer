@@ -24,6 +24,55 @@ export interface ChatResponse {
 
 export type ChatProvider = "google" | "anthropic";
 
+// ---------------------------------------------------------------------------
+// App Defaults
+// ---------------------------------------------------------------------------
+
+export interface AppPredictionDefaults {
+  ticker: string;
+  obs_date_from: string;
+  obs_date_to: string;
+  target_date: string;
+  risk_free_rate: number;
+  solver: "brent" | "newton";
+  kernel_smooth: boolean;
+}
+
+export interface AppTimelineDefaults {
+  min_date: string;
+  max_date: string;
+}
+
+export interface AppThetaExpiry {
+  name: string;
+  expiry: string;
+  days_forward: number;
+}
+
+export interface AppDefaultsResponse {
+  today: string;
+  latest_data_date: string;
+  earliest_data_date: string;
+  prediction: AppPredictionDefaults;
+  theta: {
+    top: number;
+    hv_days: number | "same_as_days_forward";
+    expiries: AppThetaExpiry[];
+  };
+  timeline: AppTimelineDefaults;
+  sample_queries: string[];
+}
+
+export async function fetchAppDefaults(): Promise<AppDefaultsResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE}/app-defaults`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
 export async function sendChatMessage(
   messages: ChatMessage[],
   provider: ChatProvider = "google",
@@ -212,6 +261,8 @@ export interface ThetaExpiry {
   expiry: string;
   last_scanned: string;
   tickers_scanned: number;
+  name?: string;
+  days_forward?: number;
 }
 
 export async function fetchThetaExpiries(): Promise<ThetaExpiry[]> {

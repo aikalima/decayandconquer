@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { PredictionParams } from "../types/prediction";
+import type { AppPredictionDefaults, AppTimelineDefaults } from "../api/client";
 import TimelineSlider from "./TimelineSlider";
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
   hoveredEventIndex?: number | null;
   onEventHover?: (index: number | null) => void;
   onStartTutorial?: () => void;
+  defaults?: AppPredictionDefaults;
+  timeline?: AppTimelineDefaults;
 }
 
 function isTargetInFuture(targetDate: string): boolean {
@@ -39,18 +42,37 @@ function computeDefaults() {
   return { obsFrom: fmt(obsFromDate), obsTo: fmt(obsToDate), target: fmt(targetDate) };
 }
 
-const DEFAULTS = computeDefaults();
+const computedDefaults = computeDefaults();
+const DEFAULTS: AppPredictionDefaults = {
+  ticker: "SPY",
+  obs_date_from: computedDefaults.obsFrom,
+  obs_date_to: computedDefaults.obsTo,
+  target_date: computedDefaults.target,
+  risk_free_rate: 0.04,
+  solver: "brent",
+  kernel_smooth: false,
+};
 export { DEFAULTS };
 
-export default function PredictionForm({ onSubmit, loading, events, hoveredEventIndex, onEventHover, onStartTutorial }: Props) {
-  const [ticker, setTicker] = useState("SPY");
-  const [obsFrom, setObsFrom] = useState(DEFAULTS.obsFrom);
-  const [obsTo, setObsTo] = useState(DEFAULTS.obsTo);
-  const [targetDate, setTargetDate] = useState(DEFAULTS.target);
-  const [riskFreeRate, setRiskFreeRate] = useState(0.04);
-  const [solver, setSolver] = useState<"brent" | "newton">("brent");
-  const [kde, setKde] = useState(false);
+export default function PredictionForm({ onSubmit, loading, events, hoveredEventIndex, onEventHover, onStartTutorial, defaults = DEFAULTS, timeline }: Props) {
+  const [ticker, setTicker] = useState(defaults.ticker);
+  const [obsFrom, setObsFrom] = useState(defaults.obs_date_from);
+  const [obsTo, setObsTo] = useState(defaults.obs_date_to);
+  const [targetDate, setTargetDate] = useState(defaults.target_date);
+  const [riskFreeRate, setRiskFreeRate] = useState(defaults.risk_free_rate);
+  const [solver, setSolver] = useState<"brent" | "newton">(defaults.solver);
+  const [kde, setKde] = useState(defaults.kernel_smooth);
   const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    setTicker(defaults.ticker);
+    setObsFrom(defaults.obs_date_from);
+    setObsTo(defaults.obs_date_to);
+    setTargetDate(defaults.target_date);
+    setRiskFreeRate(defaults.risk_free_rate);
+    setSolver(defaults.solver);
+    setKde(defaults.kernel_smooth);
+  }, [defaults]);
 
   const isValid = obsFrom && obsTo && targetDate && targetDate > obsTo;
   const isPrediction = isTargetInFuture(targetDate);
@@ -71,6 +93,13 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
 
   const buttonColor = isPrediction ? "var(--success)" : "var(--accent)";
   const buttonLabel = isPrediction ? "Run Prediction" : "Run Backtest";
+  const timelineKey = [
+    timeline?.min_date,
+    timeline?.max_date,
+    defaults.obs_date_from,
+    defaults.obs_date_to,
+    defaults.target_date,
+  ].join(":");
 
   return (
     <form
@@ -147,9 +176,12 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
 
       {/* Timeline slider */}
       <TimelineSlider
-        initialObsFrom={obsFrom}
-        initialObsTo={obsTo}
-        initialTarget={targetDate || undefined}
+        key={timelineKey}
+        initialObsFrom={defaults.obs_date_from}
+        initialObsTo={defaults.obs_date_to}
+        initialTarget={defaults.target_date || undefined}
+        timelineStartDate={timeline?.min_date}
+        timelineEndDate={timeline?.max_date}
         onObsRangeChange={(from, to) => { setObsFrom(from); setObsTo(to); }}
         onTargetDateChange={(d) => setTargetDate(d)}
         events={events}

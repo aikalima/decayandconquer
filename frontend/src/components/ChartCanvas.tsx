@@ -106,7 +106,7 @@ export default function ChartCanvas({ toolResults }: Props) {
         <div style={{ fontSize: 48, marginBottom: 12 }}>📊</div>
         <p>Charts will appear here when you ask about stocks.</p>
         <p style={{ fontSize: 12, color: "var(--muted-2)" }}>
-          Try: "What's SPY's prediction for August based on May data?"
+          Try: "What's SPY's prediction for the next monthly expiry based on recent options data?"
         </p>
       </div>
     );

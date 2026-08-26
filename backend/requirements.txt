@@ -12,4 +12,3 @@ duckdb
 boto3
 anthropic
 google-genai
-PyYAML

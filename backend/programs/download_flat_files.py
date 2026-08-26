@@ -35,11 +35,9 @@ from pathlib import Path
 import boto3
 from botocore.config import Config
 
-# S3 credentials
+# Massive flat-file S3 endpoint.
 S3_ENDPOINT = "https://files.massive.com"
 S3_BUCKET = "flatfiles"
-S3_ACCESS_KEY = "337d8326-6237-4425-8582-f4e48947bc98"
-S3_SECRET_KEY = "rvyOh4B22MMK1q5HnnJL8Dh1bAKbCQ4A"
 
 # S3 path for options day aggregates
 OPTIONS_PREFIX = "us_options_opra/day_aggs_v1"
@@ -47,12 +45,41 @@ OPTIONS_PREFIX = "us_options_opra/day_aggs_v1"
 DEFAULT_OUTPUT = Path(__file__).parent.parent / "app" / "data" / "flat_files"
 
 
+def load_project_env() -> None:
+    """Load repo-root .env when the downloader is run directly."""
+    env_path = Path(__file__).parent.parent.parent / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, val = line.split("=", 1)
+            os.environ.setdefault(key.strip(), val.strip().strip("'\""))
+
+
+def env_first(*names: str) -> str:
+    for name in names:
+        value = os.environ.get(name, "")
+        if value:
+            return value
+    return ""
+
+
 def get_s3_client():
+    load_project_env()
+    access_key = env_first("MASSIVE_S3_ACCESS_KEY", "MASSIVE_FLATFILES_ACCESS_KEY", "S3_ACCESS_KEY")
+    secret_key = env_first("MASSIVE_S3_SECRET_KEY", "MASSIVE_FLATFILES_SECRET_KEY", "S3_SECRET_KEY")
+    if not access_key or not secret_key:
+        raise ValueError(
+            "Massive flat files require S3 credentials. Set MASSIVE_S3_ACCESS_KEY "
+            "and MASSIVE_S3_SECRET_KEY in the repo-root .env."
+        )
+
     return boto3.client(
         "s3",
         endpoint_url=S3_ENDPOINT,
-        aws_access_key_id=S3_ACCESS_KEY,
-        aws_secret_access_key=S3_SECRET_KEY,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
         config=Config(signature_version="s3v4"),
     )
 

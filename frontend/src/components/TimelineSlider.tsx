@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { CATEGORY_COLORS } from "./categoryColors";
 
 interface EventMarker {
@@ -12,42 +12,55 @@ interface Props {
   initialObsFrom?: string;
   initialObsTo?: string;
   initialTarget?: string;
+  timelineStartDate?: string;
+  timelineEndDate?: string;
   events?: EventMarker[];
   hoveredEventIndex?: number | null;
   onEventHover?: (index: number | null) => void;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const START_DATE = new Date(2025, 0, 1);
-const END_DATE = new Date(2026, 11, 31);
-const TOTAL_DAYS = Math.round((END_DATE.getTime() - START_DATE.getTime()) / 86400000);
+const DEFAULT_START_DATE = "2025-01-01";
+const DEFAULT_END_DATE = "2026-12-31";
 const TRACK_TOTAL_WIDTH = 2400;
 
-function dateToDayIndex(dateStr: string): number {
-  const d = new Date(dateStr + "T00:00:00");
-  return Math.round((d.getTime() - START_DATE.getTime()) / 86400000);
+function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day);
 }
 
-function dayIndexToDateStr(day: number): string {
-  const d = new Date(START_DATE.getTime() + day * 86400000);
+function daysBetween(from: Date, to: Date): number {
+  return Math.round((to.getTime() - from.getTime()) / 86400000);
+}
+
+function clampDay(day: number, totalDays: number): number {
+  return Math.max(0, Math.min(totalDays, day));
+}
+
+function dateToDayIndex(dateStr: string, startDate: Date, totalDays: number): number {
+  return clampDay(daysBetween(startDate, parseLocalDate(dateStr)), totalDays);
+}
+
+function dayIndexToDateStr(day: number, startDate: Date): string {
+  const d = new Date(startDate.getTime() + day * 86400000);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
 }
 
-function formatShort(day: number): string {
-  const d = new Date(START_DATE.getTime() + day * 86400000);
+function formatShort(day: number, startDate: Date): string {
+  const d = new Date(startDate.getTime() + day * 86400000);
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
-function todayIndex(): number {
+function todayIndex(startDate: Date, totalDays: number): number {
   const now = new Date();
-  return Math.round((now.getTime() - START_DATE.getTime()) / 86400000);
+  return clampDay(Math.round((now.getTime() - startDate.getTime()) / 86400000), totalDays);
 }
 
-function isFuture(day: number): boolean {
-  return day >= todayIndex();
+function isFuture(day: number, startDate: Date, totalDays: number): boolean {
+  return day >= todayIndex(startDate, totalDays);
 }
 
 export default function TimelineSlider({
@@ -56,18 +69,35 @@ export default function TimelineSlider({
   initialObsFrom = "2025-11-01",
   initialObsTo = "2026-03-01",
   initialTarget,
+  timelineStartDate = DEFAULT_START_DATE,
+  timelineEndDate = DEFAULT_END_DATE,
   events = [],
   hoveredEventIndex,
   onEventHover,
 }: Props) {
+  const startDate = useMemo(() => parseLocalDate(timelineStartDate), [timelineStartDate]);
+  const endDate = useMemo(() => parseLocalDate(timelineEndDate), [timelineEndDate]);
+  const totalDays = useMemo(() => Math.max(1, daysBetween(startDate, endDate)), [startDate, endDate]);
+  const toDayIndex = useCallback((dateStr: string) => dateToDayIndex(dateStr, startDate, totalDays), [startDate, totalDays]);
+  const toDateStr = useCallback((day: number) => dayIndexToDateStr(clampDay(day, totalDays), startDate), [startDate, totalDays]);
+  const initialRange = useMemo(() => {
+    let from = toDayIndex(initialObsFrom);
+    let to = toDayIndex(initialObsTo);
+    if (to <= from) {
+      to = Math.min(totalDays, from + 1);
+      from = Math.max(0, to - 1);
+    }
+    return { from, to };
+  }, [initialObsFrom, initialObsTo, toDayIndex, totalDays]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(700);
   const [panOffset, setPanOffset] = useState(0); // px offset (negative = scrolled right)
-  const [obsFrom, setObsFrom] = useState(() => dateToDayIndex(initialObsFrom));
-  const [obsTo, setObsTo] = useState(() => dateToDayIndex(initialObsTo));
+  const [obsFrom, setObsFrom] = useState(() => initialRange.from);
+  const [obsTo, setObsTo] = useState(() => initialRange.to);
   const [target, setTarget] = useState<number | null>(() =>
-    initialTarget ? dateToDayIndex(initialTarget) : null
+    initialTarget ? toDayIndex(initialTarget) : null
   );
   const [isPanning, setIsPanning] = useState(false);
 
@@ -93,27 +123,27 @@ export default function TimelineSlider({
     // Center to show both obs range and target dot
     const rightEdge = target !== null ? target : obsTo;
     const centerDay = (obsFrom + rightEdge) / 2;
-    const centerX = (centerDay / TOTAL_DAYS) * TRACK_TOTAL_WIDTH;
+    const centerX = (centerDay / totalDays) * TRACK_TOTAL_WIDTH;
     const frame = requestAnimationFrame(() => {
       setPanOffset(-(centerX - containerWidth / 2));
     });
     return () => cancelAnimationFrame(frame);
   }, [events]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const dayToX = useCallback((d: number) => (d / TOTAL_DAYS) * TRACK_TOTAL_WIDTH + panOffset, [panOffset]);
+  const dayToX = useCallback((d: number) => (d / totalDays) * TRACK_TOTAL_WIDTH + panOffset, [panOffset, totalDays]);
   const xToDay = useCallback(
     (x: number) => {
       const rawX = x - panOffset;
-      return Math.round(Math.max(0, Math.min(TOTAL_DAYS, (rawX / TRACK_TOTAL_WIDTH) * TOTAL_DAYS)));
+      return Math.round(Math.max(0, Math.min(totalDays, (rawX / TRACK_TOTAL_WIDTH) * totalDays)));
     },
-    [panOffset]
+    [panOffset, totalDays]
   );
 
   const emitObs = useCallback(
     (from: number, to: number) => {
-      onObsRangeChange(dayIndexToDateStr(from), dayIndexToDateStr(to));
+      onObsRangeChange(toDateStr(from), toDateStr(to));
     },
-    [onObsRangeChange]
+    [onObsRangeChange, toDateStr]
   );
 
   const handlePointerDown = useCallback(
@@ -171,23 +201,24 @@ export default function TimelineSlider({
         emitObs(obsFrom, newTo);
       } else if (dragging.current === "range") {
         const dx = e.clientX - dragStart.current.x;
-        const pxPerDay = TRACK_TOTAL_WIDTH / TOTAL_DAYS;
+        const pxPerDay = TRACK_TOTAL_WIDTH / totalDays;
         const dayDelta = Math.round(dx / pxPerDay);
         const rangeSize = dragStart.current.toDay - dragStart.current.fromDay;
         let newFrom = dragStart.current.fromDay + dayDelta;
         let newTo = newFrom + rangeSize;
         if (newFrom < 0) { newFrom = 0; newTo = rangeSize; }
-        if (newTo > TOTAL_DAYS) { newTo = TOTAL_DAYS; newFrom = newTo - rangeSize; }
+        if (newTo > totalDays) { newTo = totalDays; newFrom = newTo - rangeSize; }
         setObsFrom(newFrom);
         setObsTo(newTo);
         emitObs(newFrom, newTo);
       } else if (dragging.current === "target") {
-        const newTarget = Math.max(day, obsTo + 2);
+        const newTarget = clampDay(Math.max(day, obsTo + 2), totalDays);
+        if (newTarget <= obsTo) return;
         setTarget(newTarget);
-        onTargetDateChange(dayIndexToDateStr(newTarget));
+        onTargetDateChange(toDateStr(newTarget));
       }
     },
-    [obsFrom, obsTo, target, xToDay, emitObs, onTargetDateChange, containerWidth]
+    [obsFrom, obsTo, target, xToDay, emitObs, onTargetDateChange, containerWidth, totalDays, toDateStr]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -203,30 +234,31 @@ export default function TimelineSlider({
       const day = xToDay(x);
       if (day > obsTo + 2) {
         setTarget(day);
-        onTargetDateChange(dayIndexToDateStr(day));
+        onTargetDateChange(toDateStr(day));
       }
     },
-    [obsTo, xToDay, onTargetDateChange]
+    [obsTo, xToDay, onTargetDateChange, toDateStr]
   );
 
   const fromX = dayToX(obsFrom);
   const toX = dayToX(obsTo);
   const targetX = target !== null ? dayToX(target) : null;
-  const todayX = dayToX(todayIndex());
-  const targetIsFuture = target !== null && isFuture(target);
+  const todayX = dayToX(todayIndex(startDate, totalDays));
+  const targetIsFuture = target !== null && isFuture(target, startDate, totalDays);
   const targetColor = targetIsFuture ? "var(--success)" : "var(--orange)";
 
   // Month ticks
   const monthTicks: { x: number; label: string; isYear: boolean }[] = [];
-  for (let year = 2025; year <= 2026; year++) {
-    for (let m = 0; m < 12; m++) {
-      const dayIdx = dateToDayIndex(`${year}-${String(m + 1).padStart(2, "0")}-01`);
-      monthTicks.push({
-        x: dayToX(dayIdx),
-        label: m === 0 ? `${MONTHS[m]} ${year}` : MONTHS[m],
-        isYear: m === 0,
-      });
-    }
+  const monthCursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+  while (monthCursor <= endDate) {
+    const dayIdx = clampDay(daysBetween(startDate, monthCursor), totalDays);
+    const m = monthCursor.getMonth();
+    monthTicks.push({
+      x: dayToX(dayIdx),
+      label: m === 0 ? `${MONTHS[m]} ${monthCursor.getFullYear()}` : MONTHS[m],
+      isYear: m === 0,
+    });
+    monthCursor.setMonth(monthCursor.getMonth() + 1);
   }
 
   return (
@@ -234,11 +266,11 @@ export default function TimelineSlider({
       {/* Date labels */}
       <div style={{ position: "relative", height: 22, marginBottom: 4 }}>
         <div style={{ position: "absolute", left: 0, fontSize: 12, color: "var(--accent)", fontWeight: 750 }}>
-          Observe: {formatShort(obsFrom)} to {formatShort(obsTo)}
+          Observe: {formatShort(obsFrom, startDate)} to {formatShort(obsTo, startDate)}
         </div>
         <div style={{ position: "absolute", right: 0, fontSize: 12, color: target !== null ? targetColor : "var(--muted)", fontWeight: 750 }}>
           {target !== null
-            ? `Target: ${formatShort(target)} ${targetIsFuture ? "(prediction)" : "(backtest)"}`
+            ? `Target: ${formatShort(target, startDate)} ${targetIsFuture ? "(prediction)" : "(backtest)"}`
             : "Click right of range to set target date"
           }
         </div>
@@ -304,7 +336,7 @@ export default function TimelineSlider({
 
           {/* Event markers */}
           {events.map((evt, i) => {
-            const evtX = dayToX(dateToDayIndex(evt.date));
+            const evtX = dayToX(toDayIndex(evt.date));
             const color = CATEGORY_COLORS[evt.category] || "var(--muted)";
             const isHovered = hoveredEventIndex === i;
             return (

@@ -58,11 +58,15 @@ chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 # 5. Fetch secrets and write .env
 # ---------------------------------------------------------------
 MASSIVE_KEY=$(gcloud secrets versions access latest --secret=massive-api-key 2>/dev/null || echo "")
+MASSIVE_S3_ACCESS_KEY=$(gcloud secrets versions access latest --secret=massive-s3-access-key 2>/dev/null || echo "")
+MASSIVE_S3_SECRET_KEY=$(gcloud secrets versions access latest --secret=massive-s3-secret-key 2>/dev/null || echo "")
 ANTHROPIC_KEY=$(gcloud secrets versions access latest --secret=anthropic-api-key 2>/dev/null || echo "")
 GOOGLE_KEY=$(gcloud secrets versions access latest --secret=google-api-key 2>/dev/null || echo "")
 
 cat > "$APP_DIR/.env" <<EOF
 MASSIVE_API_KEY=$MASSIVE_KEY
+MASSIVE_S3_ACCESS_KEY=$MASSIVE_S3_ACCESS_KEY
+MASSIVE_S3_SECRET_KEY=$MASSIVE_S3_SECRET_KEY
 ANTHROPIC_API_KEY=$ANTHROPIC_KEY
 ANTHROPIC_MODEL=${anthropic_model}
 GOOGLE_API_KEY=$GOOGLE_KEY
@@ -130,7 +134,7 @@ server {
     index index.html;
 
     # API proxy (matches all backend routes)
-    location ~ ^/(chat|predict|predict-stream|market-context|theta-plays|theta-expiries|heatmap-stream|theta-plays-stream|ping) {
+    location ~ ^/(app-defaults|chat|predict|predict-stream|market-context|theta-plays|theta-expiries|heatmap-stream|theta-plays-stream|ping) {
         proxy_pass http://127.0.0.1:6173;
         proxy_http_version 1.1;
         proxy_set_header Host $host;

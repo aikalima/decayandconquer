@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import Markdown from "react-markdown";
-import { sendChatMessage } from "../api/client";
+import { fetchAppDefaults, sendChatMessage } from "../api/client";
 import type { ChatMessage, ToolResult } from "../api/client";
 
 interface DisplayMessage {
@@ -29,10 +29,10 @@ const markdownStyles = `
 .chat-markdown hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
 `;
 
-const SAMPLE_QUERIES = [
-  "Which has better odds of a 10% gain by August: NVDA or AMD?",
-  "What are the chances MSFT hits $400 by August 1st?",
-  "Compare the downside risk of AAPL, TSLA, and META over the next 30 days",
+const FALLBACK_SAMPLE_QUERIES = [
+  "Which has better odds of a 10% gain by the next monthly expiry: NVDA or AMD?",
+  "What are the chances MSFT hits $400 by the next monthly expiry?",
+  "Compare the downside risk of AAPL, TSLA, and META over the next 60 days",
   "What are the top theta plays right now?",
   "What options strategy do you recommend for AMZN?",
   "I spent $1,000 on MSTR put options on May 5th 2025, $170 strike, expiring Aug 15th 2025. Did I profit?",
@@ -45,6 +45,15 @@ export default function ChatPanel() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const [sampleQueries, setSampleQueries] = useState(FALLBACK_SAMPLE_QUERIES);
+
+  useEffect(() => {
+    fetchAppDefaults().then((defaults) => {
+      if (defaults?.sample_queries.length) {
+        setSampleQueries(defaults.sample_queries);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -156,7 +165,7 @@ export default function ChatPanel() {
       >
         {/* Sample queries — always visible */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "4px 0 8px" }}>
-          {SAMPLE_QUERIES.map((q) => (
+          {sampleQueries.map((q) => (
             <button
               key={q}
               onClick={() => sendQuery(q)}

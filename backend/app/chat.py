@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Literal
 
 import numpy as np
@@ -25,6 +25,27 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 RETRYABLE_ANTHROPIC_STATUS_CODES = {500, 502, 503, 504, 529}
+
+def _prompt_defaults() -> dict[str, str]:
+    try:
+        from app.defaults import build_app_defaults
+
+        defaults = build_app_defaults()
+        return {
+            "today": defaults["today"],
+            "earliest_data_date": defaults["earliest_data_date"],
+            "latest_data_date": defaults["latest_data_date"],
+        }
+    except Exception:
+        today = date.today()
+        return {
+            "today": today.isoformat(),
+            "earliest_data_date": "2025-01-02",
+            "latest_data_date": today.isoformat(),
+        }
+
+
+_PROMPT_DEFAULTS = _prompt_defaults()
 
 SYSTEM_PROMPT = """You are a quantitative finance analyst assistant for the Decay And Conquer options analysis platform.
 
@@ -65,11 +86,11 @@ You can:
 When asked about theta plays or options to sell, use the get_theta_plays tool or query theta_results directly.
 When asked about a stock's outlook or prediction, use run_prediction with recent observation dates.
 - For obs_date_from, use a date 2-4 months before today to capture enough data
-- For obs_date_to, use the most recent trading date (today or yesterday)
-- The database has data up to approximately today's date
+- For obs_date_to, use the latest available trading date ({latest_data_date})
+- The database has data through {latest_data_date}
 When asked data questions, use query_database with SQL.
 
-Today's date is {today}. The database covers 2025-01-02 through approximately today.
+Today's date is {today}. The database covers {earliest_data_date} through {latest_data_date}.
 
 Keep responses concise and well-formatted:
 - Use markdown bullet points (- or *) for lists, each on its own line. NEVER use the bullet character (•)
@@ -77,7 +98,7 @@ Keep responses concise and well-formatted:
 - Use headers (## or ###) to separate sections
 - Always put a blank line before a list of bullet points
 - Don't use em dashes
-- Don't use markdown tables (they render poorly in the narrow chat panel)""".format(today=date.today().isoformat())
+- Don't use markdown tables (they render poorly in the narrow chat panel)""".format(**_PROMPT_DEFAULTS)
 
 
 # ---------------------------------------------------------------------------
@@ -132,12 +153,13 @@ TOOL_DEFS = [
         "name": "get_theta_plays",
         "description": (
             "Get the latest theta plays screener results: options with IV exceeding HV (overpriced premium, good to sell). "
-            "Returns top tickers ranked by premium ratio for a given DTE."
+            "Returns top tickers ranked by premium ratio for a configured monthly expiry or nearby DTE."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "days_forward": {"type": "integer", "description": "Target DTE: 14, 30, 45, or 60 (default 30)"},
+                "expiry": {"type": "string", "description": "Optional monthly expiry date to retrieve (YYYY-MM-DD)"},
+                "days_forward": {"type": "integer", "description": "Optional target DTE. If no exact scan exists, the nearest scanned expiry is used."},
                 "limit": {"type": "integer", "description": "Max results to return (default 10)"},
             },
         },
@@ -285,18 +307,75 @@ def _compare_tickers_tool(params: dict) -> dict:
     return {"comparisons": results}
 
 
+def _nearest_theta_scan_for_days(days_forward: int) -> dict | None:
+    from app.data.db import get_available_theta_expiries, get_latest_theta_scan_by_expiry
+
+    target = date.today() + timedelta(days=days_forward)
+    candidates = []
+    for item in get_available_theta_expiries():
+        try:
+            expiry = date.fromisoformat(str(item["expiry"]))
+        except ValueError:
+            continue
+        candidates.append((abs((expiry - target).days), item["expiry"]))
+
+    if not candidates:
+        return None
+
+    _, expiry = min(candidates, key=lambda item: item[0])
+    return get_latest_theta_scan_by_expiry(expiry)
+
+
+def _first_configured_theta_scan() -> dict | None:
+    from app.data.db import get_latest_theta_scan_by_expiry
+
+    try:
+        from app.defaults import build_app_defaults
+
+        defaults = build_app_defaults()
+        expiries = defaults.get("theta", {}).get("expiries", [])
+    except Exception:
+        expiries = []
+
+    for item in expiries:
+        expiry = item.get("expiry")
+        if not expiry:
+            continue
+        scan = get_latest_theta_scan_by_expiry(expiry)
+        if scan:
+            return scan
+    return None
+
+
 def _get_theta_plays_tool(params: dict) -> dict:
-    from app.data.db import get_latest_theta_scan, get_theta_results
-    days_forward = params.get("days_forward", 30)
+    from app.data.db import get_latest_theta_scan, get_latest_theta_scan_by_expiry, get_theta_results
+
+    expiry = params.get("expiry")
+    days_forward = params.get("days_forward")
     limit = params.get("limit", 10)
-    scan = get_latest_theta_scan(days_forward)
+
+    if expiry:
+        try:
+            expiry = date.fromisoformat(str(expiry)).isoformat()
+        except ValueError:
+            return {"error": "expiry must be a valid YYYY-MM-DD date"}
+        scan = get_latest_theta_scan_by_expiry(expiry)
+    elif days_forward is not None:
+        days_forward = int(days_forward)
+        scan = get_latest_theta_scan(days_forward) or _nearest_theta_scan_for_days(days_forward)
+    else:
+        scan = _first_configured_theta_scan() or get_latest_theta_scan(None)
+
     if not scan:
-        return {"error": f"No theta scan results for {days_forward}-day DTE. Run run_theta_scan.py first."}
+        return {"error": "No theta scan results found. Run run_theta_scan.py --config config/app_defaults.json first."}
+
     rows = get_theta_results(scan["scan_id"])
     sorted_rows = sorted(rows, key=lambda r: r.get("avg_premium", 0), reverse=True)[:limit]
     return {
         "scan_id": scan["scan_id"],
         "expiry": scan["expiry"],
+        "days_forward": scan.get("days_forward"),
+        "hv_days": scan.get("hv_days"),
         "scanned_at": scan.get("created_at", ""),
         "tickers_scanned": scan.get("tickers_scanned", 0),
         "results": sorted_rows,

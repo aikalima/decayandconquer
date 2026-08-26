@@ -1,0 +1,27 @@
+{
+  "prediction": {
+    "default_ticker": "SPY",
+    "observation_window_months": 4,
+    "target_expiry_index": 1,
+    "risk_free_rate": 0.04,
+    "solver": "brent",
+    "kernel_smooth": false
+  },
+  "theta": {
+    "top": 100,
+    "months_forward": 6,
+    "hv_days": "same_as_days_forward"
+  },
+  "timeline": {
+    "start_date": "2025-01-02",
+    "extra_months_after_latest_expiry": 1
+  },
+  "sample_queries": [
+    "Which has better odds of a 10% gain by {target_month}: NVDA or AMD?",
+    "What are the chances MSFT hits $400 by {target_date_pretty}?",
+    "Compare the downside risk of AAPL, TSLA, and META over the next {target_days} days",
+    "What are the top theta plays for {theta_month} expiration?",
+    "What options strategy do you recommend for AMZN?",
+    "I spent $1,000 on MSTR put options on May 5th 2025, $170 strike, expiring Aug 15th 2025. Did I profit?"
+  ]
+}
