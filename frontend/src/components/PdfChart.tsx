@@ -83,8 +83,8 @@ export default React.memo(function PdfChart({ data, spot, realized, predicted, c
                 style={{
                   padding: "5px 10px",
                   borderRadius: 4,
-                  border: `1px solid ${ciLevel === level ? "var(--accent)" : "var(--border)"}`,
-                  background: ciLevel === level ? "var(--accent)" : "transparent",
+                  border: `1px solid ${ciLevel === level ? "var(--brand)" : "var(--border)"}`,
+                  background: ciLevel === level ? "var(--brand)" : "transparent",
                   color: ciLevel === level ? "var(--text-on-accent)" : "var(--muted)",
                   cursor: "pointer",
                   fontSize: 12,
@@ -128,7 +128,7 @@ export default React.memo(function PdfChart({ data, spot, realized, predicted, c
             {
               label: "PDF",
               data: pdf,
-              borderColor: colors.blue,
+              borderColor: colors.brand,
               backgroundColor: "transparent",
               fill: false,
               pointRadius: 0,
@@ -190,45 +190,46 @@ export default React.memo(function PdfChart({ data, spot, realized, predicted, c
               ctx.setLineDash([]);
               ctx.fillText(`${ciLevel}% CI: $${pLow.toFixed(0)}–$${pHigh.toFixed(0)}`, pLowX + 4, yBottom - 6);
 
-              // Spot price line (red dashed)
+              // Spot price reference
               const spotX = xScale.getPixelForValue(findIdx(prices, spot));
-              ctx.strokeStyle = colors.danger;
+              ctx.strokeStyle = colors.risk;
               ctx.lineWidth = 1.5;
               ctx.setLineDash([6, 4]);
               ctx.beginPath();
               ctx.moveTo(spotX, yTop);
               ctx.lineTo(spotX, yBottom);
               ctx.stroke();
-              ctx.fillStyle = colors.danger;
+              ctx.fillStyle = colors.risk;
               ctx.font = "12px sans-serif";
               ctx.fillText(`Spot $${spot.toFixed(0)}`, spotX + 4, yTop + 14);
 
-              // Predicted median line (green dashed)
+              // Predicted median line
               if (predicted != null) {
                 const predX = xScale.getPixelForValue(findIdx(prices, predicted));
-                ctx.strokeStyle = colors.success;
+                ctx.strokeStyle = colors.brand;
                 ctx.lineWidth = 1.5;
                 ctx.setLineDash([4, 3]);
                 ctx.beginPath();
                 ctx.moveTo(predX, yTop);
                 ctx.lineTo(predX, yBottom);
                 ctx.stroke();
-                ctx.fillStyle = colors.success;
+                ctx.fillStyle = colors.brand;
                 ctx.setLineDash([]);
                 ctx.fillText(`Predicted $${predicted.toFixed(0)}`, predX + 4, yTop + 42);
               }
 
-              // Realized price line (cyan solid)
+              // Realized price line
               if (realized != null) {
+                const realizedColor = predicted != null && realized < predicted ? colors.down : colors.up;
                 const realX = xScale.getPixelForValue(findIdx(prices, realized));
-                ctx.strokeStyle = colors.cyan;
+                ctx.strokeStyle = realizedColor;
                 ctx.lineWidth = 2;
                 ctx.setLineDash([]);
                 ctx.beginPath();
                 ctx.moveTo(realX, yTop);
                 ctx.lineTo(realX, yBottom);
                 ctx.stroke();
-                ctx.fillStyle = colors.cyan;
+                ctx.fillStyle = realizedColor;
                 ctx.fillText(`Actual $${realized.toFixed(0)}`, realX + 4, yTop + 28);
               }
 

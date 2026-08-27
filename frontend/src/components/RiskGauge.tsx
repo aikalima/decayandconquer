@@ -49,21 +49,21 @@ export default function RiskGauge({ data, spot, predicted, realized }: Props) {
         }}
       >
         {/* Tail zones */}
-        <Zone left={0} width={pct(p5)} color="var(--danger-soft)" />
-        <Zone left={pct(p95)} width={100 - pct(p95)} color="var(--danger-soft)" />
+        <Zone left={0} width={pct(p5)} color="var(--risk-tint)" />
+        <Zone left={pct(p95)} width={100 - pct(p95)} color="var(--risk-tint)" />
 
         {/* 90% CI zones */}
-        <Zone left={pct(p5)} width={pct(p25) - pct(p5)} color="var(--warning-soft)" />
-        <Zone left={pct(p75)} width={pct(p95) - pct(p75)} color="var(--warning-soft)" />
+        <Zone left={pct(p5)} width={pct(p25) - pct(p5)} color="var(--brand-tint)" />
+        <Zone left={pct(p75)} width={pct(p95) - pct(p75)} color="var(--brand-tint)" />
 
         {/* 50% CI (core) */}
-        <Zone left={pct(p25)} width={pct(p75) - pct(p25)} color="var(--success-soft)" />
+        <Zone left={pct(p25)} width={pct(p75) - pct(p25)} color="var(--brand-tint)" />
 
         {/* Markers */}
-        <Marker position={pct(spot)} color="var(--danger)" label="Spot" />
-        <Marker position={pct(predicted)} color="var(--warning)" label="Pred" />
+        <Marker position={pct(spot)} color="var(--risk)" label="Spot" />
+        <Marker position={pct(predicted)} color="var(--brand)" label="Pred" />
         {realized != null && (
-          <Marker position={pct(realized)} color="var(--success)" label="Actual" />
+          <Marker position={pct(realized)} color={realized >= predicted ? "var(--up)" : "var(--down)"} label="Actual" />
         )}
       </div>
 
@@ -76,11 +76,11 @@ export default function RiskGauge({ data, spot, predicted, realized }: Props) {
           color: "var(--muted)",
         }}
       >
-        <span style={{ color: "var(--danger)" }}>P5: ${p5.toFixed(0)}</span>
-        <span style={{ color: "var(--warning)" }}>P25: ${p25.toFixed(0)}</span>
+        <span style={{ color: "var(--risk-text)" }}>P5: ${p5.toFixed(0)}</span>
+        <span style={{ color: "var(--brand-text)" }}>P25: ${p25.toFixed(0)}</span>
         <span style={{ color: "var(--text-soft)" }}>Median: ${predicted.toFixed(0)}</span>
-        <span style={{ color: "var(--warning)" }}>P75: ${p75.toFixed(0)}</span>
-        <span style={{ color: "var(--danger)" }}>P95: ${p95.toFixed(0)}</span>
+        <span style={{ color: "var(--brand-text)" }}>P75: ${p75.toFixed(0)}</span>
+        <span style={{ color: "var(--risk-text)" }}>P95: ${p95.toFixed(0)}</span>
       </div>
     </div>
   );

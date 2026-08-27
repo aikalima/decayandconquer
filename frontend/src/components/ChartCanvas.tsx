@@ -127,8 +127,8 @@ export default function ChartCanvas({ toolResults }: Props) {
               style={{
                 padding: "3px 10px",
                 borderRadius: 4,
-                border: `1px solid ${ciLevel === level ? "var(--accent)" : "var(--border)"}`,
-                background: ciLevel === level ? "var(--accent)" : "transparent",
+                border: `1px solid ${ciLevel === level ? "var(--brand)" : "var(--border)"}`,
+                background: ciLevel === level ? "var(--brand)" : "transparent",
                 color: ciLevel === level ? "var(--text-on-accent)" : "var(--muted)",
                 cursor: "pointer",
                 fontSize: 12,
@@ -178,7 +178,7 @@ export default function ChartCanvas({ toolResults }: Props) {
                   padding: 8,
                   borderRadius: 6,
                   background: c === latest ? "var(--surface-hover)" : "var(--surface-subtle)",
-                  border: `1px solid ${c === latest ? "var(--accent)" : "var(--border)"}`,
+                  border: `1px solid ${c === latest ? "var(--brand)" : "var(--border)"}`,
                   fontSize: 12,
                 }}
               >
@@ -186,7 +186,7 @@ export default function ChartCanvas({ toolResults }: Props) {
                 <div style={{ color: "var(--muted)" }}>
                   Median: ${c.predicted.toFixed(0)}
                   {c.realized != null && (
-                    <span style={{ color: "var(--success)" }}> | Actual: ${c.realized.toFixed(0)}</span>
+                    <span style={{ color: c.realized >= c.predicted ? "var(--up)" : "var(--down)" }}> | Actual: ${c.realized.toFixed(0)}</span>
                   )}
                 </div>
               </div>

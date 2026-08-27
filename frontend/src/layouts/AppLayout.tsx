@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import Header from "./Header";
-import Sidebar from "./Sidebar";
 import ChatPanel from "../components/ChatPanel";
 
 function getChatPref(): boolean {
@@ -31,13 +30,12 @@ export default function AppLayout() {
     >
       <Header />
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        <Sidebar />
         <main
           style={{
             flex: 1,
             overflowY: "auto",
             overflowX: "hidden",
-            padding: "28px 32px",
+            padding: "30px 34px",
             scrollbarWidth: "none",
           }}
         >
@@ -53,13 +51,13 @@ export default function AppLayout() {
             top: "50%",
             transform: "translateY(-50%)",
             zIndex: 100,
-            background: chatOpen ? "var(--surface-hover)" : "var(--accent)",
+            background: chatOpen ? "var(--surface-hover)" : "var(--brand)",
             border: chatOpen ? "1px solid var(--border)" : "none",
             borderRadius: "8px 0 0 8px",
             padding: "12px 6px",
             cursor: "pointer",
             fontSize: 18,
-            color: chatOpen ? "var(--accent)" : "var(--text-on-accent)",
+            color: chatOpen ? "var(--brand)" : "var(--text-on-accent)",
             transition: "right 0.2s ease",
             boxShadow: chatOpen ? "none" : "var(--shadow-soft)",
           }}

@@ -245,7 +245,7 @@ export default function TimelineSlider({
   const targetX = target !== null ? dayToX(target) : null;
   const todayX = dayToX(todayIndex(startDate, totalDays));
   const targetIsFuture = target !== null && isFuture(target, startDate, totalDays);
-  const targetColor = targetIsFuture ? "var(--success)" : "var(--orange)";
+  const targetColor = "var(--up)";
 
   // Month ticks
   const monthTicks: { x: number; label: string; isYear: boolean }[] = [];
@@ -265,7 +265,7 @@ export default function TimelineSlider({
     <div style={{ position: "relative", padding: "14px 0 8px", userSelect: "none", minHeight: 128 }}>
       {/* Date labels */}
       <div style={{ position: "relative", height: 22, marginBottom: 4 }}>
-        <div style={{ position: "absolute", left: 0, fontSize: 12, color: "var(--accent)", fontWeight: 750 }}>
+        <div style={{ position: "absolute", left: 0, fontSize: 12, color: "var(--brand)", fontWeight: 750 }}>
           Observe: {formatShort(obsFrom, startDate)} to {formatShort(obsTo, startDate)}
         </div>
         <div style={{ position: "absolute", right: 0, fontSize: 12, color: target !== null ? targetColor : "var(--muted)", fontWeight: 750 }}>
@@ -306,12 +306,12 @@ export default function TimelineSlider({
           {/* Today line - full height */}
           <div style={{
             position: "absolute", left: todayX, top: -20, width: 2, height: 64,
-            background: "var(--success)", opacity: 0.65, pointerEvents: "none", zIndex: 1,
+            background: "var(--up)", opacity: 0.65, pointerEvents: "none", zIndex: 1,
             borderRadius: 1,
           }} />
           <div style={{
             position: "absolute", left: todayX + 5, top: -20, fontSize: 11,
-            color: "var(--success)", fontWeight: 750, pointerEvents: "none", zIndex: 1,
+            color: "var(--up)", fontWeight: 750, pointerEvents: "none", zIndex: 1,
           }}>
             Today
           </div>
@@ -322,14 +322,14 @@ export default function TimelineSlider({
             onPointerDown={(e) => handlePointerDown("range", e)}
             style={{
               position: "absolute", left: fromX, width: Math.max(toX - fromX, 2), height: "100%",
-              background: "linear-gradient(90deg, var(--accent), var(--blue))", borderRadius: 4,
+              background: "var(--brand)", borderRadius: 4,
               cursor: "grab", zIndex: 2,
             }}
           />
 
           {/* Handles */}
-          <Handle x={fromX} onPointerDown={(e) => handlePointerDown("left", e)} color="var(--accent)" />
-          <Handle x={toX} onPointerDown={(e) => handlePointerDown("right", e)} color="var(--accent)" />
+          <Handle x={fromX} onPointerDown={(e) => handlePointerDown("left", e)} color="var(--brand)" />
+          <Handle x={toX} onPointerDown={(e) => handlePointerDown("right", e)} color="var(--brand)" />
           {target !== null && targetX !== null && (
             <Handle x={targetX} onPointerDown={(e) => handlePointerDown("target", e)} color={targetColor} dataTutorial="target-dot" />
           )}
@@ -394,7 +394,7 @@ export default function TimelineSlider({
 
       {/* Hint */}
       <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 6, textAlign: "center" }}>
-        Drag to pan timeline. Purple handles for observation window. Orange/green handle or click for target date.
+        Drag to pan timeline. Indigo handles set the observation window. The green marker sets the target date.
       </div>
     </div>
   );

@@ -268,7 +268,7 @@ cd terraform
 # 1. Configure variables
 cp terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars with your project ID, API keys, etc.
-# Optional: set anthropic_model = "claude-sonnet-4-6"
+# Optional: set anthropic_model = "claude-sonnet-5"
 
 # 2. Initialize and apply
 terraform init

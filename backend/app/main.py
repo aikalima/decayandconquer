@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional, AsyncGenerator
@@ -445,13 +446,18 @@ async def market_context(
 ):
     """Fetch AI-generated market context for the observation period."""
     try:
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            return {
+                "events": [],
+                "disclaimer": "Market context is disabled because ANTHROPIC_API_KEY is not configured.",
+            }
         defaults = build_app_defaults()["prediction"]
         obs_from = obs_from or defaults["obs_date_from"]
         obs_to = obs_to or defaults["obs_date_to"]
         events = fetch_market_context(ticker, obs_from, obs_to)
         return {
             "events": events,
-            "disclaimer": "Sourced via Google Search grounding. AI-summarized, verify independently.",
+            "disclaimer": "Sourced via Anthropic web search. AI-summarized, verify independently.",
         }
     except Exception as e:
         logger.error("market-context failed: %s", e)

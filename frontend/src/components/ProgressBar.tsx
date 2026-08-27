@@ -15,7 +15,7 @@ export default function ProgressBar({ progress, stage }: Props) {
         }}
       >
         <span style={{ color: "var(--text-soft)" }}>{stage}</span>
-        <span style={{ color: "var(--accent)", fontWeight: 800 }}>{progress}%</span>
+        <span style={{ color: "var(--brand)", fontWeight: 800 }}>{progress}%</span>
       </div>
       <div
         style={{
@@ -29,7 +29,7 @@ export default function ProgressBar({ progress, stage }: Props) {
           style={{
             height: "100%",
             width: `${progress}%`,
-            background: "linear-gradient(90deg, var(--accent), var(--blue))",
+            background: "var(--brand)",
             borderRadius: 4,
             transition: "width 0.3s ease",
           }}

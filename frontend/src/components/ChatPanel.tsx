@@ -15,7 +15,7 @@ const markdownStyles = `
 .chat-markdown ul, .chat-markdown ol { margin: 4px 0; padding-left: 16px; }
 .chat-markdown li { margin: 2px 0; font-size: 14px; }
 .chat-markdown strong { color: var(--text); }
-.chat-markdown code { background: var(--input-bg); padding: 1px 4px; border-radius: 3px; font-size: 11px; color: var(--accent-strong); }
+.chat-markdown code { background: var(--input-bg); padding: 1px 4px; border-radius: 3px; font-size: 11px; color: var(--brand-hover); }
 .chat-markdown pre { background: var(--input-bg); padding: 6px 8px; border-radius: 6px; overflow-x: auto; margin: 6px 0; }
 .chat-markdown pre code { padding: 0; background: none; }
 .chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { margin: 8px 0 4px; font-size: 15px; color: var(--text); font-weight: 750; }
@@ -24,8 +24,8 @@ const markdownStyles = `
 .chat-markdown th, .chat-markdown td { border: 1px solid var(--border); padding: 3px 6px; text-align: left; white-space: nowrap; }
 .chat-markdown th { background: var(--surface-subtle); color: var(--muted); font-weight: 700; }
 .chat-markdown td { color: var(--text-soft); }
-.chat-markdown blockquote { border-left: 3px solid var(--accent); margin: 6px 0; padding-left: 10px; color: var(--muted); font-size: 14px; }
-.chat-markdown a { color: var(--accent); }
+.chat-markdown blockquote { border-left: 3px solid var(--brand); margin: 6px 0; padding-left: 10px; color: var(--muted); font-size: 14px; }
+.chat-markdown a { color: var(--brand); }
 .chat-markdown hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
 `;
 
@@ -245,9 +245,9 @@ export default function ChatPanel() {
               width: 32,
               height: 32,
               borderRadius: "50%",
-              border: "2px solid #e74c3c",
+              border: "2px solid var(--brand)",
               background: "transparent",
-              color: "#e74c3c",
+              color: "var(--brand)",
               cursor: "pointer",
               fontSize: 12,
               display: "flex",
@@ -268,7 +268,7 @@ export default function ChatPanel() {
               height: 32,
               borderRadius: "50%",
               border: "none",
-              background: !input.trim() ? "var(--surface-hover)" : "var(--accent)",
+              background: !input.trim() ? "var(--surface-hover)" : "var(--brand)",
               color: !input.trim() ? "var(--muted-2)" : "var(--text-on-accent)",
               cursor: !input.trim() ? "not-allowed" : "pointer",
               fontSize: 16,
@@ -303,9 +303,9 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
           maxWidth: "92%",
           padding: "8px 12px",
           borderRadius: 8,
-          background: isUser ? "var(--accent)" : "var(--surface-subtle)",
+          background: isUser ? "var(--brand)" : "var(--surface-subtle)",
           color: isUser ? "var(--text-on-accent)" : "var(--text-soft)",
-          border: isUser ? "1px solid var(--accent)" : "1px solid var(--border)",
+          border: isUser ? "1px solid var(--brand)" : "1px solid var(--border)",
           fontSize: 14,
           lineHeight: 1.6,
         }}

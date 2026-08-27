@@ -129,10 +129,10 @@ export default function BacktestPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <Tutorial />
       <div style={{
-        borderLeft: "4px solid var(--accent)",
+        borderLeft: "4px solid var(--brand)",
         padding: "22px 24px",
-        background: "var(--accent-soft)",
-        border: "1px solid var(--accent-border)",
+        background: "var(--brand-tint)",
+        border: "1px solid var(--brand-border)",
         borderRadius: "0 8px 8px 0",
         maxWidth: "100%",
       }}>
@@ -145,7 +145,7 @@ export default function BacktestPage() {
           {" "}
           <span
             onClick={() => setShowExplainer(true)}
-            style={{ color: "var(--success)", cursor: "pointer", fontWeight: 800, marginLeft: 8 }}
+            style={{ color: "var(--brand)", cursor: "pointer", fontWeight: 800, marginLeft: 8 }}
           >
             Explain how it works
           </span>
@@ -168,11 +168,11 @@ export default function BacktestPage() {
       {error && (
         <div
           style={{
-            background: "var(--danger-soft)",
-            border: "1px solid var(--danger)",
+            background: "var(--down-tint)",
+            border: "1px solid var(--down)",
             borderRadius: 8,
             padding: 14,
-            color: "var(--danger)",
+            color: "var(--down-text)",
             fontSize: 14,
           }}
         >
@@ -223,7 +223,7 @@ function ExplainerModal({ onClose }: { onClose: () => void }) {
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(0,0,0,0.58)",
+          background: "color-mix(in srgb, var(--page-bg) 72%, transparent)",
           zIndex: 10000,
         }}
       />
@@ -316,7 +316,7 @@ function ExplainerModal({ onClose }: { onClose: () => void }) {
             padding: "10px 28px",
             borderRadius: 8,
             border: "none",
-            background: "var(--success)",
+            background: "var(--brand)",
             color: "var(--text-on-accent)",
             cursor: "pointer",
             fontSize: 15,
@@ -335,7 +335,7 @@ function ExplainerModal({ onClose }: { onClose: () => void }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 style={{ margin: "0 0 6px", fontSize: 16, color: "var(--success)", fontWeight: 800 }}>{title}</h3>
+      <h3 style={{ margin: "0 0 6px", fontSize: 16, color: "var(--brand-text)", fontWeight: 800 }}>{title}</h3>
       <div>{children}</div>
     </div>
   );

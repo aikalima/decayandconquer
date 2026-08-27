@@ -74,7 +74,7 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
             {
               label: "CDF",
               data: cdf,
-              borderColor: colors.orange,
+              borderColor: colors.brand,
               pointRadius: 0,
               borderWidth: 2,
               tension: 0.3,
@@ -160,27 +160,27 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
               ctx.setLineDash([]);
               ctx.fillText(`${ciLevel}% CI: $${pLow.toFixed(0)}–$${pHigh.toFixed(0)}`, pLowX + 4, yBottom - 6);
 
-              // Spot price (red dashed)
+              // Spot price reference
               const spotX = xScale.getPixelForValue(findIdx(prices, spot));
-              ctx.strokeStyle = colors.danger;
+              ctx.strokeStyle = colors.risk;
               ctx.lineWidth = 1.5;
               ctx.setLineDash([6, 4]);
               ctx.beginPath();
               ctx.moveTo(spotX, yTop);
               ctx.lineTo(spotX, yBottom);
               ctx.stroke();
-              ctx.fillStyle = colors.danger;
+              ctx.fillStyle = colors.risk;
               ctx.font = "12px sans-serif";
               ctx.fillText(`Spot $${spot.toFixed(0)}`, spotX + 4, yTop + 14);
 
-              // Predicted median (green dashed)
+              // Predicted median
               if (predicted != null) {
                 const predIdx = findIdx(prices, predicted);
                 const predX = xScale.getPixelForValue(predIdx);
                 const predCdf = cdf[predIdx] ?? 0.5;
                 const predY = yScale.getPixelForValue(predCdf);
 
-                ctx.strokeStyle = colors.success;
+                ctx.strokeStyle = colors.brand;
                 ctx.lineWidth = 1.5;
                 ctx.setLineDash([4, 3]);
                 ctx.beginPath();
@@ -194,7 +194,7 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
                 ctx.lineTo(predX, predY);
                 ctx.stroke();
 
-                ctx.fillStyle = colors.success;
+                ctx.fillStyle = colors.brand;
                 ctx.setLineDash([]);
                 ctx.fillText(
                   `Predicted $${predicted.toFixed(0)} (${(predCdf * 100).toFixed(0)}%)`,
@@ -203,14 +203,15 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
                 );
               }
 
-              // Realized price (cyan solid)
+              // Realized price
               if (realized != null) {
+                const realizedColor = predicted != null && realized < predicted ? colors.down : colors.up;
                 const realIdx = findIdx(prices, realized);
                 const realX = xScale.getPixelForValue(realIdx);
                 const cdfVal = cdf[realIdx] ?? 0;
                 const realY = yScale.getPixelForValue(cdfVal);
 
-                ctx.strokeStyle = colors.cyan;
+                ctx.strokeStyle = realizedColor;
                 ctx.lineWidth = 2;
                 ctx.setLineDash([]);
                 ctx.beginPath();
@@ -225,7 +226,7 @@ export default React.memo(function CdfChart({ data, spot, realized, predicted, c
                 ctx.lineTo(realX, realY);
                 ctx.stroke();
 
-                ctx.fillStyle = colors.cyan;
+                ctx.fillStyle = realizedColor;
                 ctx.setLineDash([]);
                 ctx.fillText(
                   `Actual $${realized.toFixed(0)} (${(cdfVal * 100).toFixed(0)}%)`,

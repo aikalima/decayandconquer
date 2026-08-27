@@ -75,7 +75,6 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
   }, [defaults]);
 
   const isValid = obsFrom && obsTo && targetDate && targetDate > obsTo;
-  const isPrediction = isTargetInFuture(targetDate);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,8 +90,8 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
     });
   };
 
-  const buttonColor = isPrediction ? "var(--success)" : "var(--accent)";
-  const buttonLabel = isPrediction ? "Run Prediction" : "Run Backtest";
+  const buttonColor = "var(--brand)";
+  const buttonLabel = isTargetInFuture(targetDate) ? "Run Prediction" : "Run Backtest";
   const timelineKey = [
     timeline?.min_date,
     timeline?.max_date,
@@ -106,41 +105,6 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
       onSubmit={handleSubmit}
       style={{ display: "flex", flexDirection: "column", gap: 14 }}
     >
-      {/* Ticker card */}
-      <div style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        padding: "18px 20px",
-        display: "flex",
-        alignItems: "center",
-        gap: 16,
-        boxShadow: "var(--shadow-soft)",
-      }}>
-        <label style={{ fontSize: 13, color: "var(--muted)", fontWeight: 750 }}>Ticker</label>
-        <input
-          data-tutorial="ticker-input"
-          value={ticker}
-          onChange={(e) => setTicker(e.target.value.toUpperCase())}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 6,
-            border: "1px solid var(--border-strong)",
-            background: "var(--input-bg)",
-            color: "var(--text)",
-            fontSize: 16,
-            fontWeight: 800,
-            width: 100,
-            letterSpacing: 0.5,
-            textAlign: "center",
-          }}
-        />
-        <span style={{ fontSize: 13, color: "var(--muted)" }}>
-          Enter any US stock symbol
-        </span>
-      </div>
-
-      {/* Date range card */}
       <div data-tutorial="date-range" style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
@@ -151,27 +115,61 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
         gap: 0,
         boxShadow: "var(--shadow-soft)",
       }}>
-        <div style={{ marginBottom: 12 }}>
-          <h2 style={{ margin: "0 0 6px", color: "var(--text)", fontSize: 21, lineHeight: 1.25, letterSpacing: 0 }}>
-            Set a target in the past to backtest against the actual price, or set a future target to predict.
-          </h2>
-          {onStartTutorial && (
-            <button
-              type="button"
-              onClick={onStartTutorial}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, marginBottom: 12, flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 520px", minWidth: 260 }}>
+            <h2 style={{ margin: "0 0 6px", color: "var(--text)", fontSize: 21, lineHeight: 1.25, letterSpacing: 0 }}>
+              Set a target in the past to backtest against the actual price, or set a future target to predict.
+            </h2>
+            {onStartTutorial && (
+              <button
+                type="button"
+                onClick={onStartTutorial}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--brand)",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  padding: 0,
+                }}
+              >
+                Show me how
+              </button>
+            )}
+          </div>
+
+          <label
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              flex: "0 0 auto",
+              minWidth: 142,
+            }}
+          >
+            <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: 0 }}>
+              Ticker
+            </span>
+            <input
+              data-tutorial="ticker-input"
+              value={ticker}
+              onChange={(e) => setTicker(e.target.value.toUpperCase())}
               style={{
-                border: "none",
-                background: "transparent",
-                color: "var(--success)",
-                cursor: "pointer",
-                fontSize: 14,
-                fontWeight: 800,
-                padding: 0,
+                padding: "9px 12px",
+                borderRadius: 6,
+                border: "1px solid var(--border-strong)",
+                background: "var(--input-bg)",
+                color: "var(--text)",
+                fontSize: 17,
+                fontWeight: 850,
+                width: 118,
+                letterSpacing: 0,
+                textAlign: "center",
+                outline: "none",
               }}
-            >
-              Show me how
-            </button>
-          )}
+            />
+          </label>
         </div>
 
       {/* Timeline slider */}
@@ -199,7 +197,7 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
             border: "1px solid var(--border)",
             borderRadius: 6,
             padding: "7px 12px",
-            color: showSettings ? "var(--accent)" : "var(--muted)",
+            color: showSettings ? "var(--brand)" : "var(--muted)",
             cursor: "pointer",
             fontSize: 13,
             fontWeight: 700,

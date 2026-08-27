@@ -23,7 +23,7 @@ from app.data.fetcher import find_nearest_expiry_friday
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
 RETRYABLE_ANTHROPIC_STATUS_CODES = {500, 502, 503, 504, 529}
 
 def _prompt_defaults() -> dict[str, str]:
