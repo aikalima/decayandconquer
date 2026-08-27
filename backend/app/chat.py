@@ -75,7 +75,7 @@ You have access to a DuckDB database with three tables:
    Columns: scan_id, days_forward, hv_days, expiry, tickers_scanned, tickers_failed, scan_time_seconds, created_at
 
 3. **theta_results** — per-ticker screener results (IV vs HV premium)
-   Columns: scan_id, ticker, spot, expiry, call_strike, call_bid, call_ask, call_mid, call_iv, put_strike, put_bid, put_ask, put_mid, put_iv, hv_20, call_premium, put_premium, avg_premium, call_efficiency, put_efficiency, beta, pct_change_5d
+   Columns: scan_id, ticker, spot, expiry, call_strike, call_bid, call_ask, call_mid, call_iv, put_strike, put_bid, put_ask, put_mid, put_iv, hv_20, call_premium, put_premium, avg_premium, call_efficiency, put_efficiency, beta, pct_change_5d, quality_score, rank_score, quality_warnings, price_source/open_interest fields
 
 You can:
 1. Run the prediction pipeline to extract risk-neutral price distributions
@@ -131,7 +131,7 @@ TOOL_DEFS = [
             "Run a read-only SQL query against the DuckDB database. "
             "Tables: 'options' (underlying, expiry, contract_type, strike, ticker, trade_date, open, high, low, close, volume, transactions), "
             "'theta_scans' (scan_id, days_forward, hv_days, expiry, tickers_scanned, created_at), "
-            "'theta_results' (scan_id, ticker, spot, call_iv, put_iv, hv_20, call_premium, put_premium, avg_premium, beta, pct_change_5d)."
+            "'theta_results' (scan_id, ticker, spot, call_iv, put_iv, hv_20, call_premium, put_premium, avg_premium, quality_score, rank_score, quality_warnings, beta, pct_change_5d)."
         ),
         "parameters": {
             "type": "object",
@@ -370,7 +370,7 @@ def _get_theta_plays_tool(params: dict) -> dict:
         return {"error": "No theta scan results found. Run run_theta_scan.py --config config/app_defaults.json first."}
 
     rows = get_theta_results(scan["scan_id"])
-    sorted_rows = sorted(rows, key=lambda r: r.get("avg_premium", 0), reverse=True)[:limit]
+    sorted_rows = sorted(rows, key=lambda r: r.get("rank_score") or r.get("avg_premium", 0), reverse=True)[:limit]
     return {
         "scan_id": scan["scan_id"],
         "expiry": scan["expiry"],

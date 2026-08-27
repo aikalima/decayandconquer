@@ -473,9 +473,9 @@ def _try_theta_json_fallback():
     try:
         data = _json.loads(fallback.read_text())
         rows = data["results"]
-        by_avg = sorted(rows, key=lambda r: r.get("avg_premium", 0), reverse=True)
-        by_call = sorted(rows, key=lambda r: r.get("call_premium", 0), reverse=True)
-        by_put = sorted(rows, key=lambda r: r.get("put_premium", 0), reverse=True)
+        by_avg = sorted(rows, key=lambda r: r.get("rank_score") or r.get("avg_premium", 0), reverse=True)
+        by_call = sorted(rows, key=lambda r: r.get("call_rank_score") or r.get("call_premium", 0), reverse=True)
+        by_put = sorted(rows, key=lambda r: r.get("put_rank_score") or r.get("put_premium", 0), reverse=True)
         return {
             "highest_premium": by_avg,
             "expensive_calls": by_call,
@@ -521,9 +521,9 @@ async def theta_plays(scan_id: Optional[str] = None, days_forward: Optional[int]
     if not rows:
         return {"error": f"No results for scan {sid}"}
 
-    by_avg = sorted(rows, key=lambda r: r.get("avg_premium", 0), reverse=True)
-    by_call = sorted(rows, key=lambda r: r.get("call_premium", 0), reverse=True)
-    by_put = sorted(rows, key=lambda r: r.get("put_premium", 0), reverse=True)
+    by_avg = sorted(rows, key=lambda r: r.get("rank_score") or r.get("avg_premium", 0), reverse=True)
+    by_call = sorted(rows, key=lambda r: r.get("call_rank_score") or r.get("call_premium", 0), reverse=True)
+    by_put = sorted(rows, key=lambda r: r.get("put_rank_score") or r.get("put_premium", 0), reverse=True)
 
     return {
         "highest_premium": by_avg,

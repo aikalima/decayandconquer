@@ -228,6 +228,23 @@ export interface ThetaPlayRow {
   put_efficiency: number;
   beta: number;
   pct_change_5d: number;
+  call_price_source?: string;
+  put_price_source?: string;
+  call_open_interest?: number;
+  put_open_interest?: number;
+  call_volume?: number;
+  put_volume?: number;
+  call_bid_size?: number;
+  call_ask_size?: number;
+  put_bid_size?: number;
+  put_ask_size?: number;
+  call_quality_score?: number;
+  put_quality_score?: number;
+  quality_score?: number;
+  call_rank_score?: number;
+  put_rank_score?: number;
+  rank_score?: number;
+  quality_warnings?: string;
 }
 
 export interface ThetaPlaysResponse {

@@ -158,6 +158,41 @@ python programs/purge_theta.py --dry-run        # preview what would be deleted
 
 App defaults live in `backend/config/app_defaults.json`. It controls prediction defaults, sample chat questions, the timeline range, and the theta scan policy. The theta scanner computes upcoming monthly third-Friday expiries and `days_forward` at runtime. Results are stored in `theta_scans` and `theta_results` DuckDB tables. The API serves defaults at `GET /app-defaults` and the latest scan results at `GET /theta-plays`.
 
+### Theta Plays MCP Server
+
+The Theta Plays MCP server exposes saved screener results to MCP clients as read-only tools. It reads the same DuckDB tables as the app and opens the database in read-only mode, so it can run while the web app is running.
+
+```bash
+# Run the MCP server over stdio
+scripts/start-theta-mcp.sh
+
+# Or from backend directly
+cd backend
+.venv/bin/python -m app.theta_mcp
+
+# Inspect during development
+cd backend
+.venv/bin/mcp dev app/theta_mcp.py
+```
+
+Available MCP tools:
+
+- `list_theta_expiries` — list configured and scanned expiries, including scan freshness.
+- `get_theta_plays` — return ranked rows for `highest_premium`, `expensive_calls`, or `expensive_puts`, with optional diagnostics for bid/ask quality, IV skew, and put-call parity.
+- `get_theta_play_detail` — return one ticker's row, diagnostics, and a concise interpretation.
+
+Example client config:
+
+```json
+{
+  "mcpServers": {
+    "decay-theta-plays": {
+      "command": "/Users/markus/src/decay_core/scripts/start-theta-mcp.sh"
+    }
+  }
+}
+```
+
 ### Backtesting
 
 Run the backtest CLI against historical data via the Massive.com API:
@@ -165,6 +200,37 @@ Run the backtest CLI against historical data via the Massive.com API:
 ```bash
 python programs/backtest.py --ticker SPY --days-forward 30
 python programs/backtest.py --ticker AAPL --dates 2025-01-06 2025-01-13 --days-forward 60
+```
+
+### Prediction MCP Server
+
+The Prediction MCP server exposes the Backtest & Forecast feature to MCP clients as read-only local tools. It uses DuckDB data directly, so it can run alongside the web app and does not require live Massive API calls for normal prediction/backtest queries.
+
+```bash
+# Run the MCP server over stdio
+scripts/start-prediction-mcp.sh
+
+# Or from backend directly
+cd backend
+.venv/bin/python -m app.prediction_mcp
+```
+
+Available MCP tools:
+
+- `get_prediction_defaults` — return date-aware prediction defaults and local DuckDB stats.
+- `run_prediction` — run a single-day or observation-window prediction and return compact distribution statistics.
+- `run_backtest` — run a compact local backtest across explicit historical observation dates.
+
+Example client config:
+
+```json
+{
+  "mcpServers": {
+    "decay-predictions": {
+      "command": "/Users/markus/src/decay_core/scripts/start-prediction-mcp.sh"
+    }
+  }
+}
 ```
 
 ### Pipeline Trace (Dev/Debug)
@@ -215,7 +281,8 @@ decay_core/
     app/
       main.py                # FastAPI server
       screener.py            # Theta plays computation (IV/HV, beta, efficiency)
-      news.py                # Market context via Gemini + Google Search
+      theta_mcp.py           # Read-only MCP server for theta_scans/theta_results
+      news.py                # Market context via Anthropic web search
       prediction_pipeline/   # 5-step PDF estimation pipeline
       data/
         db.py                # DuckDB schema + queries (options, theta_scans, theta_results)

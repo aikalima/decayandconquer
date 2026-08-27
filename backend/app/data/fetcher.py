@@ -370,6 +370,10 @@ def fetch_snapshot_for_screener(
     """
     time.sleep(rate_limit_sleep)
     rows = []
+
+    def _attr(obj, name: str, default=0):
+        return getattr(obj, name, default) if obj else default
+
     try:
         for o in client.list_snapshot_options_chain(
             ticker,
@@ -392,17 +396,41 @@ def fetch_snapshot_for_screener(
             delta = 0.0
             theta = 0.0
             spot = 0.0
+            price_source = ""
+            quote_updated_ns = None
+            day_updated_ns = None
+            trade_updated_ns = None
+            underlying_updated_ns = None
+            bid_size = 0
+            ask_size = 0
+            contract_ticker = getattr(o.details, "ticker", "") if hasattr(o, "details") else ""
 
             if hasattr(o, "last_quote") and o.last_quote:
-                bid = getattr(o.last_quote, "bid", 0.0) or 0.0
-                ask = getattr(o.last_quote, "ask", 0.0) or 0.0
+                bid = _attr(o.last_quote, "bid", 0.0) or 0.0
+                ask = _attr(o.last_quote, "ask", 0.0) or 0.0
+                bid_size = _attr(o.last_quote, "bid_size", 0) or 0
+                ask_size = _attr(o.last_quote, "ask_size", 0) or 0
+                quote_updated_ns = _attr(o.last_quote, "last_updated", None) or _attr(o.last_quote, "sip_timestamp", None)
+                if bid > 0 and ask > 0:
+                    price_source = "last_quote"
 
             if hasattr(o, "day") and o.day:
-                last_price = getattr(o.day, "close", 0.0) or 0.0
-                volume = getattr(o.day, "volume", 0) or 0
+                last_price = _attr(o.day, "close", 0.0) or 0.0
+                volume = _attr(o.day, "volume", 0) or 0
+                day_updated_ns = _attr(o.day, "last_updated", None)
+                if last_price > 0 and not price_source:
+                    price_source = "day_close"
 
             if last_price == 0.0 and hasattr(o, "last_trade") and o.last_trade:
-                last_price = getattr(o.last_trade, "price", 0.0) or 0.0
+                last_price = _attr(o.last_trade, "price", 0.0) or 0.0
+                trade_updated_ns = _attr(o.last_trade, "sip_timestamp", None) or _attr(o.last_trade, "participant_timestamp", None)
+                if last_price > 0 and not price_source:
+                    price_source = "last_trade"
+
+            if last_price == 0.0:
+                last_price = getattr(o, "fmv", 0.0) or 0.0
+                if last_price > 0 and not price_source:
+                    price_source = "fmv"
 
             iv = getattr(o, "implied_volatility", 0.0) or 0.0
             oi = getattr(o, "open_interest", 0) or 0
@@ -412,20 +440,29 @@ def fetch_snapshot_for_screener(
                 theta = getattr(o.greeks, "theta", 0.0) or 0.0
 
             if hasattr(o, "underlying_asset") and o.underlying_asset:
-                spot = getattr(o.underlying_asset, "price", 0.0) or 0.0
+                spot = _attr(o.underlying_asset, "price", 0.0) or 0.0
+                underlying_updated_ns = _attr(o.underlying_asset, "last_updated", None)
 
             if last_price > 0 or (bid > 0 and ask > 0):
                 rows.append({
+                    "contract_ticker": contract_ticker,
                     "strike": strike,
-                    "bid": bid if bid > 0 else last_price,
-                    "ask": ask if ask > 0 else last_price,
+                    "bid": bid,
+                    "ask": ask,
                     "last_price": last_price,
+                    "price_source": price_source or "unknown",
                     "iv": iv,
                     "open_interest": oi,
                     "volume": volume,
                     "delta": delta,
                     "theta": theta,
                     "spot": spot,
+                    "bid_size": bid_size,
+                    "ask_size": ask_size,
+                    "quote_updated_ns": quote_updated_ns,
+                    "day_updated_ns": day_updated_ns,
+                    "trade_updated_ns": trade_updated_ns,
+                    "underlying_updated_ns": underlying_updated_ns,
                 })
     except Exception as e:
         logger.warning("Screener snapshot failed for %s %s exp %s: %s", ticker, contract_type, expiry_date, e)

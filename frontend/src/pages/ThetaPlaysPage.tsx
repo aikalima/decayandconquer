@@ -55,7 +55,7 @@ export default function ThetaPlaysPage() {
   const [activeTab, setActiveTab] = useState<Tab>("highest_premium");
   const [expiries, setExpiries] = useState<ThetaExpiry[]>([]);
   const [selectedExpiry, setSelectedExpiry] = useState<string>("");
-  const [sortCol, setSortCol] = useState<string>("avg_premium");
+  const [sortCol, setSortCol] = useState<string>("rank_score");
   const [sortAsc, setSortAsc] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [showExplainer, setShowExplainer] = useState(false);
@@ -232,7 +232,7 @@ export default function ThetaPlaysPage() {
                   key={tab.key}
                   onClick={() => {
                     setActiveTab(tab.key);
-                    setSortCol(tab.key === "expensive_calls" ? "call_premium" : tab.key === "expensive_puts" ? "put_premium" : "avg_premium");
+                    setSortCol(tab.key === "expensive_calls" ? "call_rank_score" : tab.key === "expensive_puts" ? "put_rank_score" : "rank_score");
                     setSortAsc(false);
                     setShowAll(false);
                   }}
@@ -562,10 +562,18 @@ const COLUMNS: Column[] = [
   {
     key: "avg_premium",
     label: "Premium",
-    tooltip: "The average IV/HV ratio across the selected call and put. Above 1.0 means options price a bigger move than recent history; higher values can be better theta candidates but need risk checks.",
+    tooltip: "The average IV/HV ratio across the selected call and put. Above 1.0 means options price a bigger move than recent history; rows are ranked by a quality-adjusted version of this signal.",
     render: (r) => `${r.avg_premium.toFixed(2)}x`,
     color: (r) => r.avg_premium >= 1.5 ? "var(--risk)" : r.avg_premium >= 1.0 ? "var(--text-soft)" : "var(--muted)",
     bold: (r) => r.avg_premium >= 1.5,
+  },
+  {
+    key: "quality_score",
+    label: "Quality",
+    tooltip: "Quote and liquidity sanity score. It penalizes missing bid/ask quotes, wide spreads, low open interest, stale or synthetic prices, large IV skew, and parity gaps so stale-looking premium does not float to the top.",
+    render: (r) => r.quality_score == null ? "n/a" : `${r.quality_score.toFixed(0)}`,
+    color: (r) => (r.quality_score ?? 100) < 60 ? "var(--risk)" : "var(--muted)",
+    bold: (r) => (r.quality_score ?? 100) < 60,
   },
   {
     key: "call_premium",

@@ -30,6 +30,54 @@ _default_read_only: bool = False
 # Regex to parse OCC ticker: O:{UNDERLYING}{YYMMDD}{C|P}{STRIKE*1000 8-digit}
 _OCC_RE = re.compile(r'^O:([A-Z]+)(\d{6})([CP])(\d{8})$')
 
+_THETA_RESULT_COLUMNS = [
+    "ticker",
+    "spot",
+    "expiry",
+    "call_strike",
+    "call_bid",
+    "call_ask",
+    "call_mid",
+    "call_iv",
+    "put_strike",
+    "put_bid",
+    "put_ask",
+    "put_mid",
+    "put_iv",
+    "hv_20",
+    "call_premium",
+    "put_premium",
+    "avg_premium",
+    "call_efficiency",
+    "put_efficiency",
+    "beta",
+    "pct_change_5d",
+    "call_price_source",
+    "put_price_source",
+    "call_open_interest",
+    "put_open_interest",
+    "call_volume",
+    "put_volume",
+    "call_bid_size",
+    "call_ask_size",
+    "put_bid_size",
+    "put_ask_size",
+    "call_quote_updated_ns",
+    "put_quote_updated_ns",
+    "call_day_updated_ns",
+    "put_day_updated_ns",
+    "call_trade_updated_ns",
+    "put_trade_updated_ns",
+    "underlying_updated_ns",
+    "call_quality_score",
+    "put_quality_score",
+    "quality_score",
+    "call_rank_score",
+    "put_rank_score",
+    "rank_score",
+    "quality_warnings",
+]
+
 
 def check_db_writable() -> tuple[bool, str]:
     """Check if the DB can be opened for writing. Returns (ok, message)."""
@@ -141,9 +189,61 @@ def _ensure_schema(conn: duckdb.DuckDBPyConnection):
             put_efficiency  DOUBLE,
             beta            DOUBLE,
             pct_change_5d   DOUBLE,
+            call_price_source VARCHAR,
+            put_price_source  VARCHAR,
+            call_open_interest INTEGER,
+            put_open_interest  INTEGER,
+            call_volume        INTEGER,
+            put_volume         INTEGER,
+            call_bid_size      INTEGER,
+            call_ask_size      INTEGER,
+            put_bid_size       INTEGER,
+            put_ask_size       INTEGER,
+            call_quote_updated_ns BIGINT,
+            put_quote_updated_ns  BIGINT,
+            call_day_updated_ns   BIGINT,
+            put_day_updated_ns    BIGINT,
+            call_trade_updated_ns BIGINT,
+            put_trade_updated_ns  BIGINT,
+            underlying_updated_ns BIGINT,
+            call_quality_score DOUBLE,
+            put_quality_score  DOUBLE,
+            quality_score      DOUBLE,
+            call_rank_score    DOUBLE,
+            put_rank_score     DOUBLE,
+            rank_score         DOUBLE,
+            quality_warnings   VARCHAR,
             PRIMARY KEY (scan_id, ticker)
         )
     """)
+
+    for column, col_type in [
+        ("call_price_source", "VARCHAR"),
+        ("put_price_source", "VARCHAR"),
+        ("call_open_interest", "INTEGER"),
+        ("put_open_interest", "INTEGER"),
+        ("call_volume", "INTEGER"),
+        ("put_volume", "INTEGER"),
+        ("call_bid_size", "INTEGER"),
+        ("call_ask_size", "INTEGER"),
+        ("put_bid_size", "INTEGER"),
+        ("put_ask_size", "INTEGER"),
+        ("call_quote_updated_ns", "BIGINT"),
+        ("put_quote_updated_ns", "BIGINT"),
+        ("call_day_updated_ns", "BIGINT"),
+        ("put_day_updated_ns", "BIGINT"),
+        ("call_trade_updated_ns", "BIGINT"),
+        ("put_trade_updated_ns", "BIGINT"),
+        ("underlying_updated_ns", "BIGINT"),
+        ("call_quality_score", "DOUBLE"),
+        ("put_quality_score", "DOUBLE"),
+        ("quality_score", "DOUBLE"),
+        ("call_rank_score", "DOUBLE"),
+        ("put_rank_score", "DOUBLE"),
+        ("rank_score", "DOUBLE"),
+        ("quality_warnings", "VARCHAR"),
+    ]:
+        conn.execute(f"ALTER TABLE theta_results ADD COLUMN IF NOT EXISTS {column} {col_type}")
 
 
 def parse_occ_ticker(ticker: str) -> dict | None:
@@ -488,14 +588,34 @@ def save_theta_results(scan_id: str, rows: list[dict]) -> None:
                 (scan_id, ticker, spot, expiry, call_strike, call_bid, call_ask, call_mid,
                  call_iv, put_strike, put_bid, put_ask, put_mid, put_iv, hv_20,
                  call_premium, put_premium, avg_premium, call_efficiency, put_efficiency,
-                 beta, pct_change_5d)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 beta, pct_change_5d, call_price_source, put_price_source,
+                 call_open_interest, put_open_interest, call_volume, put_volume,
+                 call_bid_size, call_ask_size, put_bid_size, put_ask_size,
+                 call_quote_updated_ns, put_quote_updated_ns, call_day_updated_ns, put_day_updated_ns,
+                 call_trade_updated_ns, put_trade_updated_ns, underlying_updated_ns,
+                 call_quality_score, put_quality_score, quality_score,
+                 call_rank_score, put_rank_score, rank_score, quality_warnings)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?)
         """, [
             scan_id, r["ticker"], r["spot"], r["expiry"],
             r["call_strike"], r["call_bid"], r["call_ask"], r["call_mid"], r["call_iv"],
             r["put_strike"], r["put_bid"], r["put_ask"], r["put_mid"], r["put_iv"],
             r["hv_20"], r["call_premium"], r["put_premium"], r["avg_premium"],
             r["call_efficiency"], r["put_efficiency"], r["beta"], r["pct_change_5d"],
+            r.get("call_price_source"), r.get("put_price_source"),
+            r.get("call_open_interest"), r.get("put_open_interest"),
+            r.get("call_volume"), r.get("put_volume"),
+            r.get("call_bid_size"), r.get("call_ask_size"),
+            r.get("put_bid_size"), r.get("put_ask_size"),
+            r.get("call_quote_updated_ns"), r.get("put_quote_updated_ns"),
+            r.get("call_day_updated_ns"), r.get("put_day_updated_ns"),
+            r.get("call_trade_updated_ns"), r.get("put_trade_updated_ns"),
+            r.get("underlying_updated_ns"),
+            r.get("call_quality_score"), r.get("put_quality_score"), r.get("quality_score"),
+            r.get("call_rank_score"), r.get("put_rank_score"), r.get("rank_score"),
+            r.get("quality_warnings"),
         ])
 
 
@@ -566,14 +686,20 @@ def get_latest_theta_scan(days_forward: int | None = None) -> dict | None:
 def get_theta_results(scan_id: str) -> list[dict]:
     """Get all theta results for a given scan."""
     db = get_db()
-    df = db.execute("""
-        SELECT ticker, spot, expiry, call_strike, call_bid, call_ask, call_mid,
-               call_iv, put_strike, put_bid, put_ask, put_mid, put_iv, hv_20,
-               call_premium, put_premium, avg_premium, call_efficiency, put_efficiency,
-               beta, pct_change_5d
+    existing = {
+        row[1]
+        for row in db.execute("PRAGMA table_info('theta_results')").fetchall()
+    }
+    select_cols = [
+        column if column in existing else f"NULL AS {column}"
+        for column in _THETA_RESULT_COLUMNS
+    ]
+    sort_expr = "COALESCE(rank_score, avg_premium)" if "rank_score" in existing else "avg_premium"
+    df = db.execute(f"""
+        SELECT {", ".join(select_cols)}
         FROM theta_results
         WHERE scan_id = ?
-        ORDER BY avg_premium DESC
+        ORDER BY {sort_expr} DESC
     """, [scan_id]).fetchdf()
     # Convert any Timestamp/date columns to strings for JSON serialization
     if "expiry" in df.columns:

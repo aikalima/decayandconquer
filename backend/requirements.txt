@@ -12,3 +12,4 @@ duckdb
 boto3
 anthropic
 google-genai
+mcp[cli]
