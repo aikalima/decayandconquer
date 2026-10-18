@@ -1,6 +1,8 @@
-# decay_core
+# Decay And Conquer!
 
 Predict where a stock is headed by reverse-engineering probability distributions from 90 million+ options data points. Extracts the market-implied risk-neutral PDF of future prices using Black-Scholes inversion, B-spline smoothing, and the Breeden-Litzenberger formula.
+
+[Try it out](https://www.decayandconquer.com)
 
 ## How It Works
 
