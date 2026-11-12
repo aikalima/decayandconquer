@@ -32,6 +32,9 @@ scripts/start-frontend.sh
 
 # Or start both at once
 scripts/start-all.sh
+
+# Start app plus local HTTP MCP endpoints
+scripts/start-all.sh --with-mcp
 ```
 
 ### Stop
@@ -166,6 +169,10 @@ The Theta Plays MCP server exposes saved screener results to MCP clients as read
 # Run the MCP server over stdio
 scripts/start-theta-mcp.sh
 
+# Run as a local HTTP MCP endpoint
+cd backend
+.venv/bin/python -m app.theta_mcp --transport streamable-http --port 6181
+
 # Or from backend directly
 cd backend
 .venv/bin/python -m app.theta_mcp
@@ -193,6 +200,10 @@ Example client config:
 }
 ```
 
+Copyable skill file:
+
+- `mcp-skills/decay-theta-plays/SKILL.md`
+
 ### Backtesting
 
 Run the backtest CLI against historical data via the Massive.com API:
@@ -209,6 +220,10 @@ The Prediction MCP server exposes the Backtest & Forecast feature to MCP clients
 ```bash
 # Run the MCP server over stdio
 scripts/start-prediction-mcp.sh
+
+# Run as a local HTTP MCP endpoint
+cd backend
+.venv/bin/python -m app.prediction_mcp --transport streamable-http --port 6182
 
 # Or from backend directly
 cd backend
@@ -232,6 +247,10 @@ Example client config:
   }
 }
 ```
+
+Copyable skill file:
+
+- `mcp-skills/decay-predictions/SKILL.md`
 
 ### Pipeline Trace (Dev/Debug)
 

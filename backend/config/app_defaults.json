@@ -18,10 +18,10 @@
   },
   "sample_queries": [
     "Which has better odds of a 10% gain by {target_month}: NVDA or AMD?",
-    "What are the chances MSFT hits $400 by {target_date_pretty}?",
-    "Compare the downside risk of AAPL, TSLA, and META over the next {target_days} days",
+    "What are the chances MSFT finishes at least 10% above its observation-date price on {target_date_pretty}?",
+    "Compare the downside risk of AAPL, TSLA, and META over {target_days} days from the latest available observation date",
     "What are the top theta plays for {theta_month} expiration?",
     "What options strategy do you recommend for AMZN?",
-    "I spent $1,000 on MSTR put options on May 5th 2025, $170 strike, expiring Aug 15th 2025. Did I profit?"
+    "Backtest SPY over the most recent completed 30-day period available in the data. How did the predicted median compare with the realized price?"
   ]
 }

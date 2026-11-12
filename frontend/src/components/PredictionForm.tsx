@@ -20,25 +20,17 @@ function isTargetInFuture(targetDate: string): boolean {
 
 function computeDefaults() {
   const now = new Date();
-  // 2nd closest past month-start: go back 2 months from current month
-  const endMonth = now.getMonth() - 1; // 1 month ago
-  const endYear = now.getFullYear() + Math.floor(endMonth < 0 ? -1 : 0);
-  const endM = ((endMonth % 12) + 12) % 12;
-  const obsToDate = new Date(endYear, endM, 1);
-
-  // 4 months before obsTo
-  const startMonth = endM - 4;
-  const startYear = endYear + Math.floor(startMonth < 0 ? -1 : 0);
-  const startM = ((startMonth % 12) + 12) % 12;
-  const obsFromDate = new Date(startYear, startM, 1);
-
-  // Target: 2 months from today
-  const targetMonth = now.getMonth() + 2;
-  const targetYear = now.getFullYear() + Math.floor(targetMonth / 12);
-  const targetM = targetMonth % 12;
-  const targetDate = new Date(targetYear, targetM, now.getDate());
-
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  // Calendar fallback only; backend defaults use actual data coverage.
+  const obsToDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const obsFromDate = new Date(obsToDate.getFullYear(), obsToDate.getMonth() - 4, 1);
+  const expiries: Date[] = [];
+  for (let offset = 0; expiries.length < 2; offset++) {
+    const first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const expiry = new Date(first.getFullYear(), first.getMonth(), 15 + (5 - first.getDay() + 7) % 7);
+    if (expiry > now) expiries.push(expiry);
+  }
+  const targetDate = expiries[1];
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   return { obsFrom: fmt(obsFromDate), obsTo: fmt(obsToDate), target: fmt(targetDate) };
 }
 
@@ -239,7 +231,7 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
             flexWrap: "wrap",
           }}
         >
-          <SettingsField label="Risk-Free Rate" tooltip="The annualised US Treasury rate used in Black-Scholes pricing. 0.04 = 4%, which is typical for 2024-2025. This affects the discount factor applied to option prices when extracting the probability distribution.">
+          <SettingsField label="Risk-Free Rate" tooltip="The annualised risk-free rate assumed for Black-Scholes pricing. 0.04 means 4%. This is a configurable assumption, not a live rate, and affects the discount factor used to extract the probability distribution.">
             <input
               type="number"
               step="0.01"

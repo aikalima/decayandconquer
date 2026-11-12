@@ -20,8 +20,13 @@ interface Props {
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const DEFAULT_START_DATE = "2025-01-01";
-const DEFAULT_END_DATE = "2026-12-31";
+const fallbackToday = new Date();
+const fallbackYear = fallbackToday.getFullYear();
+const DEFAULT_START_DATE = `${fallbackYear - 2}-01-01`;
+const DEFAULT_END_DATE = `${fallbackYear + 1}-12-31`;
+const fallbackObsFrom = new Date(fallbackYear, fallbackToday.getMonth() - 4, 1);
+const fallbackObsTo = new Date(fallbackYear, fallbackToday.getMonth(), fallbackToday.getDate() - 1);
+const formatDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const TRACK_TOTAL_WIDTH = 2400;
 
 function parseLocalDate(dateStr: string): Date {
@@ -66,8 +71,8 @@ function isFuture(day: number, startDate: Date, totalDays: number): boolean {
 export default function TimelineSlider({
   onObsRangeChange,
   onTargetDateChange,
-  initialObsFrom = "2025-11-01",
-  initialObsTo = "2026-03-01",
+  initialObsFrom = formatDate(fallbackObsFrom),
+  initialObsTo = formatDate(fallbackObsTo),
   initialTarget,
   timelineStartDate = DEFAULT_START_DATE,
   timelineEndDate = DEFAULT_END_DATE,

@@ -6,6 +6,7 @@ Run with:
 
 from __future__ import annotations
 
+import argparse
 import logging
 from datetime import date, timedelta
 from typing import Literal
@@ -379,4 +380,21 @@ def prediction_defaults_resource() -> dict:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    parser = argparse.ArgumentParser(description="Run the Prediction MCP server")
+    parser.add_argument("--transport", choices=["stdio", "sse", "streamable-http"], default="stdio")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=6182)
+    parser.add_argument("--path", default="/mcp", help="HTTP path for streamable-http transport")
+    args = parser.parse_args()
+
+    if args.transport == "streamable-http":
+        mcp.run(
+            "streamable-http",
+            host=args.host,
+            port=args.port,
+            streamable_http_path=args.path,
+        )
+    elif args.transport == "sse":
+        mcp.run("sse", host=args.host, port=args.port)
+    else:
+        mcp.run()

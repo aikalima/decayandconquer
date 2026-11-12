@@ -31,11 +31,11 @@ const markdownStyles = `
 
 const FALLBACK_SAMPLE_QUERIES = [
   "Which has better odds of a 10% gain by the next monthly expiry: NVDA or AMD?",
-  "What are the chances MSFT hits $400 by the next monthly expiry?",
+  "What are the chances MSFT finishes at least 10% above its observation-date price at the next monthly expiry?",
   "Compare the downside risk of AAPL, TSLA, and META over the next 60 days",
   "What are the top theta plays right now?",
   "What options strategy do you recommend for AMZN?",
-  "I spent $1,000 on MSTR put options on May 5th 2025, $170 strike, expiring Aug 15th 2025. Did I profit?",
+  "Backtest SPY over the most recent completed 30-day period available in the data. How did the predicted median compare with the realized price?",
 ];
 
 export default function ChatPanel() {
