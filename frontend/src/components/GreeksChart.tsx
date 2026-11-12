@@ -60,7 +60,7 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
             {
               label: "Delta",
               data: delta,
-              borderColor: colors.blue,
+              borderColor: colors.brand,
               pointRadius: 0,
               borderWidth: 2,
               tension: 0.3,
@@ -69,7 +69,7 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
             {
               label: "Gamma",
               data: gamma,
-              borderColor: colors.success,
+              borderColor: colors.brandStrong,
               pointRadius: 0,
               borderWidth: 2,
               tension: 0.3,
@@ -78,7 +78,7 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
             {
               label: "Theta ($/day)",
               data: theta,
-              borderColor: colors.danger,
+              borderColor: colors.risk,
               pointRadius: 0,
               borderWidth: 2,
               tension: 0.3,
@@ -87,7 +87,7 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
             {
               label: "Vega ($/1% IV)",
               data: vega,
-              borderColor: colors.warning,
+              borderColor: colors.subtle,
               pointRadius: 0,
               borderWidth: 2,
               tension: 0.3,
@@ -125,7 +125,7 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
             y: {
               type: "linear",
               position: "left",
-              title: { display: true, text: "Delta", color: colors.blue, font: { size: 12, weight: 600 } },
+              title: { display: true, text: "Delta", color: colors.brand, font: { size: 12, weight: 600 } },
               ticks: { color: colors.subtle, font: { size: 12 } },
               grid: { color: colors.grid },
               min: 0,
@@ -148,14 +148,14 @@ export default React.memo(function GreeksChart({ greeks, spot }: Props) {
 
               const spotX = xScale.getPixelForValue(findIdx(strikes, spot));
               ctx.save();
-              ctx.strokeStyle = colors.danger;
+              ctx.strokeStyle = colors.risk;
               ctx.lineWidth = 1.5;
               ctx.setLineDash([6, 4]);
               ctx.beginPath();
               ctx.moveTo(spotX, yTop);
               ctx.lineTo(spotX, yBottom);
               ctx.stroke();
-              ctx.fillStyle = colors.danger;
+              ctx.fillStyle = colors.risk;
               ctx.font = "12px sans-serif";
               ctx.fillText(`ATM $${spot.toFixed(0)}`, spotX + 4, yTop + 14);
               ctx.restore();

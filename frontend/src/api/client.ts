@@ -24,6 +24,55 @@ export interface ChatResponse {
 
 export type ChatProvider = "google" | "anthropic";
 
+// ---------------------------------------------------------------------------
+// App Defaults
+// ---------------------------------------------------------------------------
+
+export interface AppPredictionDefaults {
+  ticker: string;
+  obs_date_from: string;
+  obs_date_to: string;
+  target_date: string;
+  risk_free_rate: number;
+  solver: "brent" | "newton";
+  kernel_smooth: boolean;
+}
+
+export interface AppTimelineDefaults {
+  min_date: string;
+  max_date: string;
+}
+
+export interface AppThetaExpiry {
+  name: string;
+  expiry: string;
+  days_forward: number;
+}
+
+export interface AppDefaultsResponse {
+  today: string;
+  latest_data_date: string;
+  earliest_data_date: string;
+  prediction: AppPredictionDefaults;
+  theta: {
+    top: number;
+    hv_days: number | "same_as_days_forward";
+    expiries: AppThetaExpiry[];
+  };
+  timeline: AppTimelineDefaults;
+  sample_queries: string[];
+}
+
+export async function fetchAppDefaults(): Promise<AppDefaultsResponse | null> {
+  try {
+    const res = await fetch(`${API_BASE}/app-defaults`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
 export async function sendChatMessage(
   messages: ChatMessage[],
   provider: ChatProvider = "google",
@@ -179,6 +228,23 @@ export interface ThetaPlayRow {
   put_efficiency: number;
   beta: number;
   pct_change_5d: number;
+  call_price_source?: string;
+  put_price_source?: string;
+  call_open_interest?: number;
+  put_open_interest?: number;
+  call_volume?: number;
+  put_volume?: number;
+  call_bid_size?: number;
+  call_ask_size?: number;
+  put_bid_size?: number;
+  put_ask_size?: number;
+  call_quality_score?: number;
+  put_quality_score?: number;
+  quality_score?: number;
+  call_rank_score?: number;
+  put_rank_score?: number;
+  rank_score?: number;
+  quality_warnings?: string;
 }
 
 export interface ThetaPlaysResponse {
@@ -212,6 +278,8 @@ export interface ThetaExpiry {
   expiry: string;
   last_scanned: string;
   tickers_scanned: number;
+  name?: string;
+  days_forward?: number;
 }
 
 export async function fetchThetaExpiries(): Promise<ThetaExpiry[]> {

@@ -9,8 +9,8 @@ Usage:
     python run_theta_scan.py --days-forward 45      # 45 DTE
     python run_theta_scan.py --tickers AAPL,MSFT    # specific tickers
     python run_theta_scan.py --hv-days 30           # 30-day HV lookback
-    python run_theta_scan.py --config config/theta_scans.yaml --dry-run
-    python run_theta_scan.py --config config/theta_scans.yaml
+    python run_theta_scan.py --config config/app_defaults.json --dry-run
+    python run_theta_scan.py --config config/app_defaults.json
 """
 
 import argparse
@@ -19,7 +19,7 @@ import subprocess
 import sys
 import time
 from dataclasses import asdict
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -37,12 +37,12 @@ if _env_path.exists():
             os.environ.setdefault(key.strip(), val.strip().strip("'\""))
 
 from app.screener import scan_all, DEFAULT_TICKERS, ScreenerRow
+from app.defaults import CONFIG_PATH, build_theta_scan_plan
 from app.data.db import (
     get_db,
     check_db_writable,
     save_theta_scan,
     save_theta_results,
-    get_latest_theta_scan,
     get_top_tickers_by_volume,
     close_db,
 )
@@ -54,51 +54,6 @@ def _ticker_list_from_config(value: object) -> str | list[str] | None:
     if isinstance(value, list):
         return [str(t).strip().upper() for t in value if str(t).strip()]
     return str(value)
-
-
-def _parse_config_date(value: object, label: str) -> date:
-    if isinstance(value, date):
-        return value
-    try:
-        return datetime.strptime(str(value), "%Y-%m-%d").date()
-    except ValueError as exc:
-        raise ValueError(f"{label}: expected YYYY-MM-DD date, got {value!r}") from exc
-
-
-def _resolve_days_forward(scan: dict, label: str) -> int:
-    if "days_forward" in scan and scan["days_forward"] is not None:
-        days_forward = int(scan["days_forward"])
-    else:
-        expiry_value = scan.get("expiry") or scan.get("date") or scan.get("target_date")
-        if not expiry_value:
-            raise ValueError(f"{label}: set either expiry or days_forward")
-        days_forward = (_parse_config_date(expiry_value, label) - date.today()).days
-
-    if days_forward <= 0:
-        raise ValueError(f"{label}: days_forward must be positive, got {days_forward}")
-    return days_forward
-
-
-def _resolve_hv_days(value: object, days_forward: int) -> int:
-    if value in (None, "", "same_as_days_forward"):
-        return days_forward
-    return int(value)
-
-
-def _read_yaml(path: Path) -> dict:
-    try:
-        import yaml
-    except ImportError as exc:
-        raise SystemExit("PyYAML is required for --config. Run: pip install -r requirements.txt") from exc
-
-    data = yaml.safe_load(path.read_text())
-    if not isinstance(data, dict):
-        raise ValueError(f"{path}: expected a YAML object")
-    return data
-
-
-def _merged_config_value(scan: dict, defaults: dict, key: str, fallback: object = None) -> object:
-    return scan[key] if key in scan else defaults.get(key, fallback)
 
 
 def _systemctl(action: str, service: str) -> None:
@@ -226,27 +181,18 @@ def run_theta_scan(
 
 
 def run_theta_scans_from_config(config_path: Path, *, api_key: str | None = None, dry_run: bool = False) -> bool:
-    config = _read_yaml(config_path)
-    defaults = config.get("defaults") or {}
-    scans = config.get("scans")
-    if not isinstance(defaults, dict):
-        raise ValueError(f"{config_path}: defaults must be a YAML object")
-    if not isinstance(scans, list) or not scans:
-        raise ValueError(f"{config_path}: scans must be a non-empty list")
+    scans = build_theta_scan_plan(config_path)
+    if not scans:
+        raise ValueError(f"{config_path}: no theta scans configured")
 
-    continue_on_error = bool(config.get("continue_on_error", True))
     all_ok = True
 
     for index, scan in enumerate(scans, start=1):
-        if not isinstance(scan, dict):
-            raise ValueError(f"{config_path}: scans[{index}] must be a YAML object")
-
-        label = str(scan.get("name") or scan.get("expiry") or scan.get("date") or f"scan {index}")
-        days_forward = _resolve_days_forward(scan, label)
-        hv_days = _resolve_hv_days(_merged_config_value(scan, defaults, "hv_days"), days_forward)
-        tickers = _ticker_list_from_config(_merged_config_value(scan, defaults, "tickers"))
-        top_value = _merged_config_value(scan, defaults, "top")
-        top = int(top_value) if top_value not in (None, "") else None
+        label = str(scan.get("name") or scan.get("expiry") or f"scan {index}")
+        days_forward = int(scan["days_forward"])
+        hv_days = int(scan["hv_days"])
+        tickers = _ticker_list_from_config(scan.get("tickers"))
+        top = int(scan["top"]) if scan.get("top") not in (None, "") else None
 
         if tickers and top:
             raise ValueError(f"{label}: set either tickers or top, not both")
@@ -256,7 +202,7 @@ def run_theta_scans_from_config(config_path: Path, *, api_key: str | None = None
         print(f"Theta scan {index}/{len(scans)}: {label}")
         print("=" * 72)
         if dry_run:
-            target = scan.get("expiry") or scan.get("date") or scan.get("target_date") or "days-forward"
+            target = scan.get("expiry") or "days-forward"
             universe = f"top {top}" if top else f"{len(tickers)} configured tickers" if isinstance(tickers, list) else "default tickers"
             print(f"Target:       {target}")
             print(f"DTE:          {days_forward} days")
@@ -276,12 +222,8 @@ def run_theta_scans_from_config(config_path: Path, *, api_key: str | None = None
             all_ok = False
             print(f"ERROR: {label} failed: {exc}")
             close_db()
-            if not continue_on_error:
-                raise
         else:
             all_ok = all_ok and ok
-            if not ok and not continue_on_error:
-                break
 
     return all_ok
 
@@ -293,7 +235,7 @@ def main():
     parser.add_argument("--top", type=int, default=None, help="Scan top N tickers by options volume from DB (e.g. --top 500)")
     parser.add_argument("--days-forward", type=int, default=30, help="Target DTE (default: 30)")
     parser.add_argument("--hv-days", type=int, default=None, help="HV lookback days (default: matches --days-forward)")
-    parser.add_argument("--config", type=Path, default=None, help="YAML config containing multiple theta scans")
+    parser.add_argument("--config", type=Path, default=None, help=f"JSON app defaults config for multiple theta scans (default: {CONFIG_PATH.relative_to(BACKEND_DIR)})")
     parser.add_argument("--dry-run", action="store_true", help="Validate config and print computed scan parameters without running")
     parser.add_argument(
         "--manage-service",
@@ -307,7 +249,7 @@ def main():
     if args.config and (args.tickers or args.top or args.days_forward != 30 or args.hv_days is not None):
         parser.error("--config cannot be combined with --tickers, --top, --days-forward, or --hv-days")
     if args.dry_run and not args.config:
-        parser.error("--dry-run requires --config")
+        args.config = CONFIG_PATH
 
     try:
         if args.manage_service and not args.dry_run:

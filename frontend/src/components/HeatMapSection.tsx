@@ -33,11 +33,8 @@ function cellColor(value: number, maxAbs: number): string {
   if (maxAbs === 0 || value === 0) return "transparent";
   const intensity = Math.min(Math.abs(value) / maxAbs, 1);
   const t = Math.pow(intensity, 0.6);
-  if (value > 0) {
-    return `rgb(${Math.round(10 + t * 36)}, ${Math.round(30 + t * 174)}, ${Math.round(10 + t * 103)})`;
-  } else {
-    return `rgb(${Math.round(30 + t * 201)}, ${Math.round(10 + t * 66)}, ${Math.round(10 + t * 50)})`;
-  }
+  const color = value > 0 ? "var(--up)" : "var(--down)";
+  return `color-mix(in srgb, ${color} ${Math.round(18 + t * 72)}%, transparent)`;
 }
 
 interface Props {
@@ -96,8 +93,8 @@ export default function HeatMapSection({ ticker }: Props) {
               style={{
                 padding: "5px 10px",
                 borderRadius: 4,
-                border: `1px solid ${metric === m.key ? "var(--accent)" : "var(--border)"}`,
-                background: metric === m.key ? "var(--accent)" : "transparent",
+                border: `1px solid ${metric === m.key ? "var(--brand)" : "var(--border)"}`,
+                background: metric === m.key ? "var(--brand)" : "transparent",
                 color: metric === m.key ? "var(--text-on-accent)" : "var(--muted)",
                 cursor: "pointer",
                 fontSize: 12,
@@ -111,7 +108,7 @@ export default function HeatMapSection({ ticker }: Props) {
       </div>
       <p className="dashboard-caption" style={{ margin: "0 0 14px" }}>
         Call vs put activity across strikes and expiry dates.
-        Green = bullish (call-heavy), red = bearish (put-heavy).
+        Green marks call-heavy positioning; red marks put-heavy positioning.
       </p>
 
       {loading && (
@@ -145,15 +142,15 @@ export default function HeatMapSection({ ticker }: Props) {
                       style={{
                         padding: "6px 4px",
                         textAlign: "center",
-                        color: s === atmStrike ? "var(--accent)" : "var(--muted)",
+                        color: s === atmStrike ? "var(--brand)" : "var(--muted)",
                         fontSize: 11,
                         fontWeight: s === atmStrike ? 700 : 400,
-                        borderBottom: s === atmStrike ? "2px solid var(--accent)" : "1px solid var(--border)",
+                        borderBottom: s === atmStrike ? "2px solid var(--brand)" : "1px solid var(--border)",
                         whiteSpace: "nowrap",
                       }}
                     >
                       ${formatStrike(s)}
-                      {s === atmStrike && <div style={{ fontSize: 9, color: "var(--accent)" }}>ATM</div>}
+                      {s === atmStrike && <div style={{ fontSize: 9, color: "var(--brand)" }}>ATM</div>}
                     </th>
                   ))}
                 </tr>
@@ -185,7 +182,7 @@ export default function HeatMapSection({ ticker }: Props) {
                               padding: "4px 2px",
                               textAlign: "center",
                               background: cellColor(value, maxAbs),
-                              color: Math.abs(value) > maxAbs * 0.3 ? "#ffffff" : "var(--muted)",
+                              color: Math.abs(value) > maxAbs * 0.3 ? "var(--text-on-accent)" : "var(--muted)",
                               fontSize: 10,
                               fontWeight: Math.abs(value) > maxAbs * 0.5 ? 700 : 400,
                               borderBottom: "1px solid var(--surface)",
@@ -207,14 +204,14 @@ export default function HeatMapSection({ ticker }: Props) {
 
           {/* Legend */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, justifyContent: "center" }}>
-            <span style={{ fontSize: 11, color: "var(--danger)" }}>Put-heavy</span>
+            <span style={{ fontSize: 11, color: "var(--down)" }}>Put-heavy</span>
             <div style={{
               width: 160,
               height: 8,
               borderRadius: 4,
-              background: "linear-gradient(90deg, var(--danger), rgba(232,93,87,0.16), var(--input-bg), rgba(46,204,113,0.16), var(--success))",
+              background: "linear-gradient(90deg, var(--down), var(--down-tint), var(--input-bg), var(--up-tint), var(--up))",
             }} />
-            <span style={{ fontSize: 11, color: "var(--success)" }}>Call-heavy</span>
+            <span style={{ fontSize: 11, color: "var(--up)" }}>Call-heavy</span>
           </div>
 
           {/* Tooltip */}
@@ -241,8 +238,8 @@ export default function HeatMapSection({ ticker }: Props) {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "auto auto auto", gap: "2px 12px" }}>
                 <span style={{ color: "var(--muted)" }}></span>
-                <span style={{ color: "var(--success)", fontWeight: 700 }}>Calls</span>
-                <span style={{ color: "var(--danger)", fontWeight: 700 }}>Puts</span>
+                <span style={{ color: "var(--up)", fontWeight: 700 }}>Calls</span>
+                <span style={{ color: "var(--down)", fontWeight: 700 }}>Puts</span>
                 <span style={{ color: "var(--muted)" }}>Volume</span>
                 <span>{hoveredCell.call_volume.toLocaleString()}</span>
                 <span>{hoveredCell.put_volume.toLocaleString()}</span>

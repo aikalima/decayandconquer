@@ -33,6 +33,20 @@ variable "massive_api_key" {
   sensitive   = true
 }
 
+variable "massive_s3_access_key" {
+  description = "Massive.com flat-files S3 access key"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "massive_s3_secret_key" {
+  description = "Massive.com flat-files S3 secret key"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "anthropic_api_key" {
   description = "Anthropic API key for Claude chat"
   type        = string
@@ -42,7 +56,7 @@ variable "anthropic_api_key" {
 variable "anthropic_model" {
   description = "Anthropic Claude model ID for Dacey chat"
   type        = string
-  default     = "claude-sonnet-4-6"
+  default     = "claude-sonnet-5"
 }
 
 variable "google_api_key" {

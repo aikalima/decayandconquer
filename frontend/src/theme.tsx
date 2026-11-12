@@ -12,8 +12,14 @@ function getInitialTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
+const initialTheme = getInitialTheme();
+
+if (typeof document !== "undefined") {
+  document.documentElement.dataset.theme = initialTheme;
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [theme, setTheme] = useState<Theme>(initialTheme);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;

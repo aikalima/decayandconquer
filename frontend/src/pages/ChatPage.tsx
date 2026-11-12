@@ -15,16 +15,16 @@ const markdownStyles = `
 .chat-markdown p { margin: 4px 0; }
 .chat-markdown ul, .chat-markdown ol { margin: 4px 0; padding-left: 20px; }
 .chat-markdown li { margin: 2px 0; }
-.chat-markdown strong { color: #fff; }
-.chat-markdown code { background: #0f0f1a; padding: 1px 5px; border-radius: 3px; font-size: 11px; color: #a882ff; }
-.chat-markdown pre { background: #0f0f1a; padding: 8px 10px; border-radius: 6px; overflow-x: auto; margin: 6px 0; }
+.chat-markdown strong { color: var(--text); }
+.chat-markdown code { background: var(--input-bg); padding: 1px 5px; border-radius: 3px; font-size: 11px; color: var(--brand-hover); }
+.chat-markdown pre { background: var(--input-bg); padding: 8px 10px; border-radius: 6px; overflow-x: auto; margin: 6px 0; }
 .chat-markdown pre code { padding: 0; background: none; }
-.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { margin: 8px 0 4px; font-size: 13px; color: #ccc; }
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { margin: 8px 0 4px; font-size: 13px; color: var(--text); }
 .chat-markdown table { border-collapse: collapse; margin: 6px 0; width: 100%; }
-.chat-markdown th, .chat-markdown td { border: 1px solid #333; padding: 3px 8px; text-align: left; font-size: 11px; }
-.chat-markdown th { background: #0f0f1a; color: #888; }
-.chat-markdown blockquote { border-left: 3px solid #6c63ff; margin: 6px 0; padding-left: 10px; color: #999; }
-.chat-markdown a { color: #6c63ff; }
+.chat-markdown th, .chat-markdown td { border: 1px solid var(--border); padding: 3px 8px; text-align: left; font-size: 11px; }
+.chat-markdown th { background: var(--surface-subtle); color: var(--text-muted); }
+.chat-markdown blockquote { border-left: 3px solid var(--brand); margin: 6px 0; padding-left: 10px; color: var(--text-muted); }
+.chat-markdown a { color: var(--brand); }
 `;
 
 export default function ChatPage() {
@@ -94,7 +94,7 @@ export default function ChatPage() {
           minWidth: 350,
           display: "flex",
           flexDirection: "column",
-          borderRight: "1px solid #2a2a4a",
+              borderRight: "1px solid var(--border)",
         }}
       >
         {/* Messages */}
@@ -109,9 +109,9 @@ export default function ChatPage() {
           }}
         >
           {messages.length === 0 && (
-            <div style={{ color: "#555", fontSize: 12, padding: "20px 0" }}>
+            <div style={{ color: "var(--text-muted)", fontSize: 12, padding: "20px 0" }}>
               <div style={{ fontSize: 28, marginBottom: 8 }}>💬</div>
-              <p style={{ margin: "0 0 10px", color: "#777" }}>
+              <p style={{ margin: "0 0 10px", color: "var(--text-muted)" }}>
                 Ask about stocks, options, predictions. Try:
               </p>
               {[
@@ -126,11 +126,11 @@ export default function ChatPage() {
                   style={{
                     display: "block",
                     width: "100%",
-                    background: "#1a1a2e",
-                    border: "1px solid #2a2a4a",
+                    background: "var(--card-bg)",
+                    border: "1px solid var(--border)",
                     borderRadius: 6,
                     padding: "7px 12px",
-                    color: "#888",
+                    color: "var(--text-muted)",
                     cursor: "pointer",
                     fontSize: 11,
                     textAlign: "left",
@@ -167,9 +167,9 @@ export default function ChatPage() {
               flex: 1,
               padding: "9px 12px",
               borderRadius: 8,
-              border: "1px solid #333",
-              background: "#0f0f1a",
-              color: "#e0e0e0",
+              border: "1px solid var(--border-strong)",
+              background: "var(--input-bg)",
+              color: "var(--text)",
               fontSize: 13,
               outline: "none",
             }}
@@ -181,8 +181,8 @@ export default function ChatPage() {
               padding: "9px 16px",
               borderRadius: 8,
               border: "none",
-              background: loading ? "#333" : "#6c63ff",
-              color: "#fff",
+              background: loading ? "var(--surface-hover)" : "var(--brand)",
+              color: "var(--text-on-accent)",
               cursor: loading ? "wait" : "pointer",
               fontSize: 13,
               fontWeight: 600,
@@ -199,7 +199,7 @@ export default function ChatPage() {
           flex: 1,
           overflow: "auto",
           padding: 16,
-          background: "#0a0a14",
+          background: "var(--page-bg)",
         }}
       >
         <ChartCanvas toolResults={allToolResults} />
@@ -219,14 +219,14 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
           maxWidth: "90%",
           padding: "8px 12px",
           borderRadius: 10,
-          background: isUser ? "#6c63ff" : "#1a1a2e",
-          color: isUser ? "#fff" : "#ddd",
+          background: isUser ? "var(--brand)" : "var(--card-bg)",
+          color: isUser ? "var(--text-on-accent)" : "var(--text)",
           fontSize: 12,
           lineHeight: 1.6,
         }}
       >
         {message.loading ? (
-          <span style={{ color: "#888" }}>Thinking...</span>
+          <span style={{ color: "var(--text-muted)" }}>Thinking...</span>
         ) : isUser ? (
           message.content
         ) : (

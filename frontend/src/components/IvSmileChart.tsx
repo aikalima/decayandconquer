@@ -107,14 +107,14 @@ export default React.memo(function IvSmileChart({ ivSmile, spot }: Props) {
               // ATM line at spot
               const spotX = xScale.getPixelForValue(findIdx(smoothStrikes, spot));
               ctx.save();
-              ctx.strokeStyle = colors.danger;
+              ctx.strokeStyle = colors.risk;
               ctx.lineWidth = 1.5;
               ctx.setLineDash([6, 4]);
               ctx.beginPath();
               ctx.moveTo(spotX, yTop);
               ctx.lineTo(spotX, yBottom);
               ctx.stroke();
-              ctx.fillStyle = colors.danger;
+              ctx.fillStyle = colors.risk;
               ctx.font = "12px sans-serif";
               ctx.fillText(`ATM $${spot.toFixed(0)}`, spotX + 4, yTop + 14);
               ctx.restore();

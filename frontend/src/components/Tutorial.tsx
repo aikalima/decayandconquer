@@ -20,7 +20,7 @@ const STEPS: Step[] = [
   },
   {
     title: "2. Set the Observation Window",
-    text: "This purple range defines which dates of options data to use. A wider range averages implied volatility across more days, producing a smoother and more stable prediction. Drag the handles to adjust.",
+    text: "This indigo range defines which dates of options data to use. A wider range averages implied volatility across more days, producing a smoother and more stable prediction. Drag the handles to adjust.",
     target: '[data-tutorial="obs-range"]',
     tooltipAnchor: '[data-tutorial="date-range"]',
     position: "bottom",
@@ -28,7 +28,7 @@ const STEPS: Step[] = [
   },
   {
     title: "3. Set a Target Date",
-    text: "Click or drag the orange/green dot to set the date you want to predict the stock price for. If the target is in the past, you get a backtest (compares prediction vs actual). If it's in the future, you get a forward prediction.",
+    text: "Click or drag the green marker to set the date you want to predict the stock price for. If the target is in the past, you get a backtest (compares prediction vs actual). If it's in the future, you get a forward prediction.",
     target: '[data-tutorial="target-dot"]',
     tooltipAnchor: '[data-tutorial="date-range"]',
     position: "bottom",
@@ -100,7 +100,7 @@ export default function Tutorial() {
     position: "fixed",
     zIndex: 10000,
     background: "var(--surface)",
-    border: "2px solid var(--accent)",
+    border: "2px solid var(--brand)",
     borderRadius: 8,
     padding: "16px 20px",
     maxWidth: 360,
@@ -130,7 +130,7 @@ export default function Tutorial() {
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(0,0,0,0.5)",
+          background: "color-mix(in srgb, var(--page-bg) 68%, transparent)",
           zIndex: 9998,
         }}
       />
@@ -141,13 +141,9 @@ export default function Tutorial() {
         const isObsRange = currentStep.animation === "slide-range";
         const pad = isTargetDot ? 8 : isObsRange ? 4 : 6;
         const radius = isTargetDot ? "50%" : isObsRange ? "10px" : "8px";
-        const glowColor = isTargetDot
-          ? "rgba(46, 204, 113, 0.5)"
-          : "rgba(108, 99, 255, 0.4)";
-        const glowColorStrong = isTargetDot
-          ? "rgba(46, 204, 113, 0.9)"
-          : "rgba(108, 99, 255, 0.8)";
-        const borderColor = isTargetDot ? "var(--success)" : "var(--accent)";
+        const glowColor = isTargetDot ? "var(--up-tint)" : "var(--brand-tint)";
+        const glowColorStrong = isTargetDot ? "var(--up)" : "var(--brand)";
+        const borderColor = isTargetDot ? "var(--up)" : "var(--brand)";
         const animName = currentStep.animation ? "tutorial-pulse" : undefined;
 
         // If element is off-screen (e.g. panned timeline), don't show highlight
@@ -183,7 +179,7 @@ export default function Tutorial() {
       {/* Tooltip */}
       <div style={tooltipStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <span style={{ fontSize: 15, fontWeight: 800, color: "var(--accent)" }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: "var(--brand)" }}>
             {currentStep.title}
           </span>
           <span style={{ fontSize: 12, color: "var(--muted)" }}>
@@ -216,7 +212,7 @@ export default function Tutorial() {
               padding: "6px 18px",
               borderRadius: 6,
               border: "none",
-              background: "var(--accent)",
+              background: "var(--brand)",
               color: "var(--text-on-accent)",
               cursor: "pointer",
               fontSize: 14,
@@ -236,7 +232,7 @@ export default function Tutorial() {
                 width: 6,
                 height: 6,
                 borderRadius: "50%",
-                background: i === step ? "var(--accent)" : "var(--border-strong)",
+                background: i === step ? "var(--brand)" : "var(--border-strong)",
                 transition: "background 0.2s",
               }}
             />

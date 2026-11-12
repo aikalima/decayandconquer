@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { PredictionParams } from "../types/prediction";
+import type { AppPredictionDefaults, AppTimelineDefaults } from "../api/client";
 import TimelineSlider from "./TimelineSlider";
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
   hoveredEventIndex?: number | null;
   onEventHover?: (index: number | null) => void;
   onStartTutorial?: () => void;
+  defaults?: AppPredictionDefaults;
+  timeline?: AppTimelineDefaults;
 }
 
 function isTargetInFuture(targetDate: string): boolean {
@@ -17,43 +20,53 @@ function isTargetInFuture(targetDate: string): boolean {
 
 function computeDefaults() {
   const now = new Date();
-  // 2nd closest past month-start: go back 2 months from current month
-  const endMonth = now.getMonth() - 1; // 1 month ago
-  const endYear = now.getFullYear() + Math.floor(endMonth < 0 ? -1 : 0);
-  const endM = ((endMonth % 12) + 12) % 12;
-  const obsToDate = new Date(endYear, endM, 1);
-
-  // 4 months before obsTo
-  const startMonth = endM - 4;
-  const startYear = endYear + Math.floor(startMonth < 0 ? -1 : 0);
-  const startM = ((startMonth % 12) + 12) % 12;
-  const obsFromDate = new Date(startYear, startM, 1);
-
-  // Target: 2 months from today
-  const targetMonth = now.getMonth() + 2;
-  const targetYear = now.getFullYear() + Math.floor(targetMonth / 12);
-  const targetM = targetMonth % 12;
-  const targetDate = new Date(targetYear, targetM, now.getDate());
-
-  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  // Calendar fallback only; backend defaults use actual data coverage.
+  const obsToDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const obsFromDate = new Date(obsToDate.getFullYear(), obsToDate.getMonth() - 4, 1);
+  const expiries: Date[] = [];
+  for (let offset = 0; expiries.length < 2; offset++) {
+    const first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const expiry = new Date(first.getFullYear(), first.getMonth(), 15 + (5 - first.getDay() + 7) % 7);
+    if (expiry > now) expiries.push(expiry);
+  }
+  const targetDate = expiries[1];
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   return { obsFrom: fmt(obsFromDate), obsTo: fmt(obsToDate), target: fmt(targetDate) };
 }
 
-const DEFAULTS = computeDefaults();
+const computedDefaults = computeDefaults();
+const DEFAULTS: AppPredictionDefaults = {
+  ticker: "SPY",
+  obs_date_from: computedDefaults.obsFrom,
+  obs_date_to: computedDefaults.obsTo,
+  target_date: computedDefaults.target,
+  risk_free_rate: 0.04,
+  solver: "brent",
+  kernel_smooth: false,
+};
 export { DEFAULTS };
 
-export default function PredictionForm({ onSubmit, loading, events, hoveredEventIndex, onEventHover, onStartTutorial }: Props) {
-  const [ticker, setTicker] = useState("SPY");
-  const [obsFrom, setObsFrom] = useState(DEFAULTS.obsFrom);
-  const [obsTo, setObsTo] = useState(DEFAULTS.obsTo);
-  const [targetDate, setTargetDate] = useState(DEFAULTS.target);
-  const [riskFreeRate, setRiskFreeRate] = useState(0.04);
-  const [solver, setSolver] = useState<"brent" | "newton">("brent");
-  const [kde, setKde] = useState(false);
+export default function PredictionForm({ onSubmit, loading, events, hoveredEventIndex, onEventHover, onStartTutorial, defaults = DEFAULTS, timeline }: Props) {
+  const [ticker, setTicker] = useState(defaults.ticker);
+  const [obsFrom, setObsFrom] = useState(defaults.obs_date_from);
+  const [obsTo, setObsTo] = useState(defaults.obs_date_to);
+  const [targetDate, setTargetDate] = useState(defaults.target_date);
+  const [riskFreeRate, setRiskFreeRate] = useState(defaults.risk_free_rate);
+  const [solver, setSolver] = useState<"brent" | "newton">(defaults.solver);
+  const [kde, setKde] = useState(defaults.kernel_smooth);
   const [showSettings, setShowSettings] = useState(false);
 
+  useEffect(() => {
+    setTicker(defaults.ticker);
+    setObsFrom(defaults.obs_date_from);
+    setObsTo(defaults.obs_date_to);
+    setTargetDate(defaults.target_date);
+    setRiskFreeRate(defaults.risk_free_rate);
+    setSolver(defaults.solver);
+    setKde(defaults.kernel_smooth);
+  }, [defaults]);
+
   const isValid = obsFrom && obsTo && targetDate && targetDate > obsTo;
-  const isPrediction = isTargetInFuture(targetDate);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,49 +82,21 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
     });
   };
 
-  const buttonColor = isPrediction ? "var(--success)" : "var(--accent)";
-  const buttonLabel = isPrediction ? "Run Prediction" : "Run Backtest";
+  const buttonColor = "var(--brand)";
+  const buttonLabel = isTargetInFuture(targetDate) ? "Run Prediction" : "Run Backtest";
+  const timelineKey = [
+    timeline?.min_date,
+    timeline?.max_date,
+    defaults.obs_date_from,
+    defaults.obs_date_to,
+    defaults.target_date,
+  ].join(":");
 
   return (
     <form
       onSubmit={handleSubmit}
       style={{ display: "flex", flexDirection: "column", gap: 14 }}
     >
-      {/* Ticker card */}
-      <div style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        padding: "18px 20px",
-        display: "flex",
-        alignItems: "center",
-        gap: 16,
-        boxShadow: "var(--shadow-soft)",
-      }}>
-        <label style={{ fontSize: 13, color: "var(--muted)", fontWeight: 750 }}>Ticker</label>
-        <input
-          data-tutorial="ticker-input"
-          value={ticker}
-          onChange={(e) => setTicker(e.target.value.toUpperCase())}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 6,
-            border: "1px solid var(--border-strong)",
-            background: "var(--input-bg)",
-            color: "var(--text)",
-            fontSize: 16,
-            fontWeight: 800,
-            width: 100,
-            letterSpacing: 0.5,
-            textAlign: "center",
-          }}
-        />
-        <span style={{ fontSize: 13, color: "var(--muted)" }}>
-          Enter any US stock symbol
-        </span>
-      </div>
-
-      {/* Date range card */}
       <div data-tutorial="date-range" style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
@@ -122,34 +107,71 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
         gap: 0,
         boxShadow: "var(--shadow-soft)",
       }}>
-        <div style={{ marginBottom: 12 }}>
-          <h2 style={{ margin: "0 0 6px", color: "var(--text)", fontSize: 21, lineHeight: 1.25, letterSpacing: 0 }}>
-            Set a target in the past to backtest against the actual price, or set a future target to predict.
-          </h2>
-          {onStartTutorial && (
-            <button
-              type="button"
-              onClick={onStartTutorial}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, marginBottom: 12, flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 520px", minWidth: 260 }}>
+            <h2 style={{ margin: "0 0 6px", color: "var(--text)", fontSize: 21, lineHeight: 1.25, letterSpacing: 0 }}>
+              Set a target in the past to backtest against the actual price, or set a future target to predict.
+            </h2>
+            {onStartTutorial && (
+              <button
+                type="button"
+                onClick={onStartTutorial}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--brand)",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  padding: 0,
+                }}
+              >
+                Show me how
+              </button>
+            )}
+          </div>
+
+          <label
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              flex: "0 0 auto",
+              minWidth: 142,
+            }}
+          >
+            <span style={{ fontSize: 12, color: "var(--muted)", fontWeight: 800, textTransform: "uppercase", letterSpacing: 0 }}>
+              Ticker
+            </span>
+            <input
+              data-tutorial="ticker-input"
+              value={ticker}
+              onChange={(e) => setTicker(e.target.value.toUpperCase())}
               style={{
-                border: "none",
-                background: "transparent",
-                color: "var(--success)",
-                cursor: "pointer",
-                fontSize: 14,
-                fontWeight: 800,
-                padding: 0,
+                padding: "9px 12px",
+                borderRadius: 6,
+                border: "1px solid var(--border-strong)",
+                background: "var(--input-bg)",
+                color: "var(--text)",
+                fontSize: 17,
+                fontWeight: 850,
+                width: 118,
+                letterSpacing: 0,
+                textAlign: "center",
+                outline: "none",
               }}
-            >
-              Show me how
-            </button>
-          )}
+            />
+          </label>
         </div>
 
       {/* Timeline slider */}
       <TimelineSlider
-        initialObsFrom={obsFrom}
-        initialObsTo={obsTo}
-        initialTarget={targetDate || undefined}
+        key={timelineKey}
+        initialObsFrom={defaults.obs_date_from}
+        initialObsTo={defaults.obs_date_to}
+        initialTarget={defaults.target_date || undefined}
+        timelineStartDate={timeline?.min_date}
+        timelineEndDate={timeline?.max_date}
         onObsRangeChange={(from, to) => { setObsFrom(from); setObsTo(to); }}
         onTargetDateChange={(d) => setTargetDate(d)}
         events={events}
@@ -167,7 +189,7 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
             border: "1px solid var(--border)",
             borderRadius: 6,
             padding: "7px 12px",
-            color: showSettings ? "var(--accent)" : "var(--muted)",
+            color: showSettings ? "var(--brand)" : "var(--muted)",
             cursor: "pointer",
             fontSize: 13,
             fontWeight: 700,
@@ -209,7 +231,7 @@ export default function PredictionForm({ onSubmit, loading, events, hoveredEvent
             flexWrap: "wrap",
           }}
         >
-          <SettingsField label="Risk-Free Rate" tooltip="The annualised US Treasury rate used in Black-Scholes pricing. 0.04 = 4%, which is typical for 2024-2025. This affects the discount factor applied to option prices when extracting the probability distribution.">
+          <SettingsField label="Risk-Free Rate" tooltip="The annualised risk-free rate assumed for Black-Scholes pricing. 0.04 means 4%. This is a configurable assumption, not a live rate, and affects the discount factor used to extract the probability distribution.">
             <input
               type="number"
               step="0.01"

@@ -1,0 +1,27 @@
+{
+  "prediction": {
+    "default_ticker": "SPY",
+    "observation_window_months": 4,
+    "target_expiry_index": 1,
+    "risk_free_rate": 0.04,
+    "solver": "brent",
+    "kernel_smooth": false
+  },
+  "theta": {
+    "top": 100,
+    "months_forward": 6,
+    "hv_days": "same_as_days_forward"
+  },
+  "timeline": {
+    "start_date": "2025-01-02",
+    "extra_months_after_latest_expiry": 1
+  },
+  "sample_queries": [
+    "Which has better odds of a 10% gain by {target_month}: NVDA or AMD?",
+    "What are the chances MSFT finishes at least 10% above its observation-date price on {target_date_pretty}?",
+    "Compare the downside risk of AAPL, TSLA, and META over {target_days} days from the latest available observation date",
+    "What are the top theta plays for {theta_month} expiration?",
+    "What options strategy do you recommend for AMZN?",
+    "Backtest SPY over the most recent completed 30-day period available in the data. How did the predicted median compare with the realized price?"
+  ]
+}

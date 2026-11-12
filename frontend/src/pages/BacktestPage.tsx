@@ -10,8 +10,8 @@ import HeatMapSection from "../components/HeatMapSection";
 import MarketContext from "../components/MarketContext";
 import SummaryStats from "../components/SummaryStats";
 import ProgressBar from "../components/ProgressBar";
-import { fetchPredictionStream, fetchMarketContext } from "../api/client";
-import type { MarketEvent } from "../api/client";
+import { fetchPredictionStream, fetchMarketContext, fetchAppDefaults } from "../api/client";
+import type { AppDefaultsResponse, MarketEvent } from "../api/client";
 import type { PredictionParams, PredictionData, PredictionMeta, IvSmile, Greeks } from "../types/prediction";
 import { parsePredictionResponse } from "../types/prediction";
 
@@ -41,6 +41,8 @@ export default function BacktestPage() {
   const [marketDisclaimer, setMarketDisclaimer] = useState("");
   const [marketLoading, setMarketLoading] = useState(false);
   const [hoveredEventIndex, setHoveredEventIndex] = useState<number | null>(null);
+  const [appDefaults, setAppDefaults] = useState<AppDefaultsResponse | null>(null);
+  const [defaultsReady, setDefaultsReady] = useState(false);
 
   const handleSubmit = async (p: PredictionParams) => {
     setLoading(true);
@@ -86,21 +88,39 @@ export default function BacktestPage() {
     }
   };
 
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchAppDefaults()
+      .then((defaults) => {
+        if (!cancelled) setAppDefaults(defaults);
+      })
+      .finally(() => {
+        if (!cancelled) setDefaultsReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const predictionDefaults = appDefaults?.prediction ?? DEFAULTS;
+
   // Auto-run with defaults on first load
   const didAutoRun = useRef(false);
   useEffect(() => {
-    if (didAutoRun.current) return;
+    if (!defaultsReady || didAutoRun.current) return;
     didAutoRun.current = true;
     handleSubmit({
-      ticker: "SPY",
-      obs_date_from: DEFAULTS.obsFrom,
-      obs_date_to: DEFAULTS.obsTo,
-      target_date: DEFAULTS.target,
-      risk_free_rate: 0.04,
-      solver: "brent",
-      kernel_smooth: false,
+      ticker: predictionDefaults.ticker,
+      obs_date_from: predictionDefaults.obs_date_from,
+      obs_date_to: predictionDefaults.obs_date_to,
+      target_date: predictionDefaults.target_date,
+      risk_free_rate: predictionDefaults.risk_free_rate,
+      solver: predictionDefaults.solver,
+      kernel_smooth: predictionDefaults.kernel_smooth,
     });
-  }, []);
+  }, [defaultsReady, predictionDefaults]);
 
   const median = data ? computeMedian(data) : 0;
   const isPrediction = meta ? !meta.realized_price : false;
@@ -109,10 +129,10 @@ export default function BacktestPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <Tutorial />
       <div style={{
-        borderLeft: "4px solid var(--accent)",
+        borderLeft: "4px solid var(--brand)",
         padding: "22px 24px",
-        background: "var(--accent-soft)",
-        border: "1px solid var(--accent-border)",
+        background: "var(--brand-tint)",
+        border: "1px solid var(--brand-border)",
         borderRadius: "0 8px 8px 0",
         maxWidth: "100%",
       }}>
@@ -125,7 +145,7 @@ export default function BacktestPage() {
           {" "}
           <span
             onClick={() => setShowExplainer(true)}
-            style={{ color: "var(--success)", cursor: "pointer", fontWeight: 800, marginLeft: 8 }}
+            style={{ color: "var(--brand)", cursor: "pointer", fontWeight: 800, marginLeft: 8 }}
           >
             Explain how it works
           </span>
@@ -139,6 +159,8 @@ export default function BacktestPage() {
         hoveredEventIndex={hoveredEventIndex}
         onEventHover={setHoveredEventIndex}
         onStartTutorial={startTutorial}
+        defaults={predictionDefaults}
+        timeline={appDefaults?.timeline}
       />
 
       {loading && <ProgressBar progress={progress} stage={stage} />}
@@ -146,11 +168,11 @@ export default function BacktestPage() {
       {error && (
         <div
           style={{
-            background: "var(--danger-soft)",
-            border: "1px solid var(--danger)",
+            background: "var(--down-tint)",
+            border: "1px solid var(--down)",
             borderRadius: 8,
             padding: 14,
-            color: "var(--danger)",
+            color: "var(--down-text)",
             fontSize: 14,
           }}
         >
@@ -201,7 +223,7 @@ function ExplainerModal({ onClose }: { onClose: () => void }) {
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(0,0,0,0.58)",
+          background: "color-mix(in srgb, var(--page-bg) 72%, transparent)",
           zIndex: 10000,
         }}
       />
@@ -294,7 +316,7 @@ function ExplainerModal({ onClose }: { onClose: () => void }) {
             padding: "10px 28px",
             borderRadius: 8,
             border: "none",
-            background: "var(--success)",
+            background: "var(--brand)",
             color: "var(--text-on-accent)",
             cursor: "pointer",
             fontSize: 15,
@@ -313,7 +335,7 @@ function ExplainerModal({ onClose }: { onClose: () => void }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 style={{ margin: "0 0 6px", fontSize: 16, color: "var(--success)", fontWeight: 800 }}>{title}</h3>
+      <h3 style={{ margin: "0 0 6px", fontSize: 16, color: "var(--brand-text)", fontWeight: 800 }}>{title}</h3>
       <div>{children}</div>
     </div>
   );

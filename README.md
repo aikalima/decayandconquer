@@ -34,6 +34,9 @@ scripts/start-frontend.sh
 
 # Or start both at once
 scripts/start-all.sh
+
+# Start app plus local HTTP MCP endpoints
+scripts/start-all.sh --with-mcp
 ```
 
 ### Stop
@@ -92,6 +95,14 @@ source .venv/bin/activate
 
 Download and import daily options data from Massive.com S3 into DuckDB (~90M+ rows).
 
+Flat-file downloads use Massive's S3 credentials, not the REST API key. Set these in the repo-root `.env`:
+
+```bash
+MASSIVE_API_KEY=your-massive-rest-api-key
+MASSIVE_S3_ACCESS_KEY=your-massive-flat-files-s3-access-key
+MASSIVE_S3_SECRET_KEY=your-massive-flat-files-s3-secret-key
+```
+
 ```bash
 # Download a specific month
 python programs/download_flat_files.py --year 2025 --month 6
@@ -139,10 +150,10 @@ python programs/run_theta_scan.py --tickers AAPL,MSFT,NVDA,TSLA
 python programs/run_theta_scan.py --top 200 --days-forward 45 --hv-days 30
 
 # Run all configured theta scans
-python programs/run_theta_scan.py --config config/theta_scans.yaml
+python programs/run_theta_scan.py --config config/app_defaults.json
 
 # On the GCP VM, stop/start decay-api around the configured batch
-python programs/run_theta_scan.py --config config/theta_scans.yaml --manage-service
+python programs/run_theta_scan.py --config config/app_defaults.json --manage-service
 
 # Purge theta scan data
 python programs/purge_theta.py                  # delete all theta data
@@ -150,7 +161,50 @@ python programs/purge_theta.py --days 30        # delete only 30-day DTE scans
 python programs/purge_theta.py --dry-run        # preview what would be deleted
 ```
 
-Configured scans live in `backend/config/theta_scans.yaml`. Prefer `expiry: YYYY-MM-DD` there; the script computes `days_forward` at runtime. Results are stored in `theta_scans` and `theta_results` DuckDB tables. The API serves the latest scan at `GET /theta-plays`.
+App defaults live in `backend/config/app_defaults.json`. It controls prediction defaults, sample chat questions, the timeline range, and the theta scan policy. The theta scanner computes upcoming monthly third-Friday expiries and `days_forward` at runtime. Results are stored in `theta_scans` and `theta_results` DuckDB tables. The API serves defaults at `GET /app-defaults` and the latest scan results at `GET /theta-plays`.
+
+### Theta Plays MCP Server
+
+The Theta Plays MCP server exposes saved screener results to MCP clients as read-only tools. It reads the same DuckDB tables as the app and opens the database in read-only mode, so it can run while the web app is running.
+
+```bash
+# Run the MCP server over stdio
+scripts/start-theta-mcp.sh
+
+# Run as a local HTTP MCP endpoint
+cd backend
+.venv/bin/python -m app.theta_mcp --transport streamable-http --port 6181
+
+# Or from backend directly
+cd backend
+.venv/bin/python -m app.theta_mcp
+
+# Inspect during development
+cd backend
+.venv/bin/mcp dev app/theta_mcp.py
+```
+
+Available MCP tools:
+
+- `list_theta_expiries` — list configured and scanned expiries, including scan freshness.
+- `get_theta_plays` — return ranked rows for `highest_premium`, `expensive_calls`, or `expensive_puts`, with optional diagnostics for bid/ask quality, IV skew, and put-call parity.
+- `get_theta_play_detail` — return one ticker's row, diagnostics, and a concise interpretation.
+
+Example client config:
+
+```json
+{
+  "mcpServers": {
+    "decay-theta-plays": {
+      "command": "/Users/markus/src/decay_core/scripts/start-theta-mcp.sh"
+    }
+  }
+}
+```
+
+Copyable skill file:
+
+- `mcp-skills/decay-theta-plays/SKILL.md`
 
 ### Backtesting
 
@@ -160,6 +214,45 @@ Run the backtest CLI against historical data via the Massive.com API:
 python programs/backtest.py --ticker SPY --days-forward 30
 python programs/backtest.py --ticker AAPL --dates 2025-01-06 2025-01-13 --days-forward 60
 ```
+
+### Prediction MCP Server
+
+The Prediction MCP server exposes the Backtest & Forecast feature to MCP clients as read-only local tools. It uses DuckDB data directly, so it can run alongside the web app and does not require live Massive API calls for normal prediction/backtest queries.
+
+```bash
+# Run the MCP server over stdio
+scripts/start-prediction-mcp.sh
+
+# Run as a local HTTP MCP endpoint
+cd backend
+.venv/bin/python -m app.prediction_mcp --transport streamable-http --port 6182
+
+# Or from backend directly
+cd backend
+.venv/bin/python -m app.prediction_mcp
+```
+
+Available MCP tools:
+
+- `get_prediction_defaults` — return date-aware prediction defaults and local DuckDB stats.
+- `run_prediction` — run a single-day or observation-window prediction and return compact distribution statistics.
+- `run_backtest` — run a compact local backtest across explicit historical observation dates.
+
+Example client config:
+
+```json
+{
+  "mcpServers": {
+    "decay-predictions": {
+      "command": "/Users/markus/src/decay_core/scripts/start-prediction-mcp.sh"
+    }
+  }
+}
+```
+
+Copyable skill file:
+
+- `mcp-skills/decay-predictions/SKILL.md`
 
 ### Pipeline Trace (Dev/Debug)
 
@@ -204,10 +297,13 @@ decay_core/
     start-frontend.sh        # Start frontend on :6161
     start-all.sh             # Start both
   backend/
+    config/
+      app_defaults.json      # Date-aware UI defaults + theta scan policy
     app/
       main.py                # FastAPI server
       screener.py            # Theta plays computation (IV/HV, beta, efficiency)
-      news.py                # Market context via Gemini + Google Search
+      theta_mcp.py           # Read-only MCP server for theta_scans/theta_results
+      news.py                # Market context via Anthropic web search
       prediction_pipeline/   # 5-step PDF estimation pipeline
       data/
         db.py                # DuckDB schema + queries (options, theta_scans, theta_results)
@@ -260,7 +356,7 @@ cd terraform
 # 1. Configure variables
 cp terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars with your project ID, API keys, etc.
-# Optional: set anthropic_model = "claude-sonnet-4-6"
+# Optional: set anthropic_model = "claude-sonnet-5"
 
 # 2. Initialize and apply
 terraform init
@@ -306,13 +402,13 @@ cd /opt/decay_core/backend
 Preview the configured theta scans without spending API calls:
 
 ```bash
-.venv/bin/python programs/run_theta_scan.py --config config/theta_scans.yaml --dry-run
+.venv/bin/python programs/run_theta_scan.py --config config/app_defaults.json --dry-run
 ```
 
 Run the configured theta scans. This stops `decay-api` before writing to DuckDB and starts it again afterward:
 
 ```bash
-.venv/bin/python programs/run_theta_scan.py --config config/theta_scans.yaml --manage-service
+.venv/bin/python programs/run_theta_scan.py --config config/app_defaults.json --manage-service
 ```
 
 Pull the newest options flat files from Massive and import them into DuckDB:
@@ -348,7 +444,7 @@ The cron runs at **9:30 UTC (5:30 AM ET)** on weekdays:
 
 1. Stops the API (~10 min downtime)
 2. Downloads and imports new flat files
-3. Runs theta scans from `backend/config/theta_scans.yaml`
+3. Runs theta scans from `backend/config/app_defaults.json`
 4. Restarts the API
 
 Logs: `/var/log/decay/cron.log`

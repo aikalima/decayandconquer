@@ -126,6 +126,14 @@ echo ""
 echo "--- Restart API ---"
 sudo systemctl restart decay-api
 
+echo ""
+echo "--- Nginx route check ---"
+if [[ -f /etc/nginx/sites-available/decay ]] && ! sudo grep -q 'app-defaults' /etc/nginx/sites-available/decay; then
+  sudo sed -i 's#location ~ \^/(#location ~ ^/(app-defaults|#' /etc/nginx/sites-available/decay
+  sudo nginx -t
+  sudo systemctl reload nginx
+fi
+
 echo "Waiting for API health..."
 for attempt in {1..30}; do
   if curl -fsS http://127.0.0.1:6173/ping; then

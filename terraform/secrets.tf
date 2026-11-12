@@ -23,6 +23,41 @@ resource "google_secret_manager_secret_version" "massive_api_key" {
   secret_data = var.massive_api_key
 }
 
+# Massive.com flat-files S3 credentials (optional)
+resource "google_secret_manager_secret" "massive_s3_access_key" {
+  count     = var.massive_s3_access_key != "" ? 1 : 0
+  secret_id = "massive-s3-access-key"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "massive_s3_access_key" {
+  count       = var.massive_s3_access_key != "" ? 1 : 0
+  secret      = google_secret_manager_secret.massive_s3_access_key[0].id
+  secret_data = var.massive_s3_access_key
+}
+
+resource "google_secret_manager_secret" "massive_s3_secret_key" {
+  count     = var.massive_s3_secret_key != "" ? 1 : 0
+  secret_id = "massive-s3-secret-key"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "massive_s3_secret_key" {
+  count       = var.massive_s3_secret_key != "" ? 1 : 0
+  secret      = google_secret_manager_secret.massive_s3_secret_key[0].id
+  secret_data = var.massive_s3_secret_key
+}
+
 # Anthropic API key
 resource "google_secret_manager_secret" "anthropic_api_key" {
   secret_id = "anthropic-api-key"

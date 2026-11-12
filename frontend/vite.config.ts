@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     port: 6161,
     proxy: {
+      "/app-defaults": "http://localhost:6173",
       "/chat": "http://localhost:6173",
       "/predict": "http://localhost:6173",
       "/predict-stream": "http://localhost:6173",
