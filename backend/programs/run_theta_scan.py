@@ -139,7 +139,8 @@ def run_theta_scan(
     except Exception as e:
         # Fallback: save to JSON file
         import json
-        fallback = Path(__file__).parent.parent / "app" / "data" / "theta_latest.json"
+        fallback = Path(os.environ.get("DECAY_THETA_FALLBACK_PATH",
+            Path(__file__).parent.parent / "app" / "data" / "theta_latest.json"))
         fallback.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "scan_id": scan_id, "days_forward": days_forward, "hv_days": hv_days,

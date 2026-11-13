@@ -13,6 +13,7 @@ Usage:
 
 from __future__ import annotations
 import logging
+import os
 import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -21,7 +22,7 @@ import duckdb
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = Path(__file__).parent / "options.duckdb"
+DB_PATH = Path(os.environ.get("DECAY_DB_PATH", Path(__file__).parent / "options.duckdb"))
 FLAT_FILES_DIR = Path(__file__).parent / "flat_files"
 
 _connection: duckdb.DuckDBPyConnection | None = None
@@ -119,7 +120,12 @@ def get_db(read_only: bool | None = None) -> duckdb.DuckDBPyConnection:
     if read_only is None:
         read_only = _default_read_only
     if _connection is None:
-        _connection = duckdb.connect(str(DB_PATH), read_only=read_only)
+        config = {}
+        if os.environ.get("DECAY_DB_MEMORY_LIMIT"):
+            config["memory_limit"] = os.environ["DECAY_DB_MEMORY_LIMIT"]
+        if os.environ.get("DECAY_DB_THREADS"):
+            config["threads"] = int(os.environ["DECAY_DB_THREADS"])
+        _connection = duckdb.connect(str(DB_PATH), read_only=read_only, config=config)
         if not read_only:
             _ensure_schema(_connection)
         logger.info("DuckDB opened: %s (read_only=%s)", DB_PATH, read_only)

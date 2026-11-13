@@ -247,8 +247,8 @@ python programs/run_theta_scan.py --top 200 --days-forward 45 --hv-days 30
 # Run all configured theta scans
 python programs/run_theta_scan.py --config config/app_defaults.json
 
-# On the GCP VM, stop/start decay-api around the configured batch
-python programs/run_theta_scan.py --config config/app_defaults.json --manage-service
+# On GCP, build scans in a private DB and briefly restart only to publish
+python programs/refresh_data.py --theta-only
 
 # Purge theta scan data
 python programs/purge_theta.py                  # delete all theta data
@@ -500,26 +500,29 @@ Preview the configured theta scans without spending API calls:
 .venv/bin/python programs/run_theta_scan.py --config config/app_defaults.json --dry-run
 ```
 
-Run the configured theta scans. This stops `decay-api` before writing to DuckDB and starts it again afterward:
+Run only the configured theta scans while the API continues serving the current database:
 
 ```bash
-.venv/bin/python programs/run_theta_scan.py --config config/app_defaults.json --manage-service
+.venv/bin/python programs/refresh_data.py --theta-only
 ```
 
-Pull the newest options flat files from Massive and import them into DuckDB:
+Pull and import the newest published options flat files into a private database, then publish:
 
 ```bash
-sudo systemctl stop decay-api
 .venv/bin/python programs/update_flat_files.py --dry-run
-.venv/bin/python programs/update_flat_files.py
-sudo systemctl start decay-api
+.venv/bin/python programs/refresh_data.py --options-only
 ```
 
-Run the full daily maintenance workflow manually. This updates flat files, imports options data, runs configured theta scans, and restarts the API:
+Run the full daily maintenance workflow manually. The API stays online during downloads, imports and scans; it briefly restarts only after the new database passes validation:
 
 ```bash
 /opt/decay_core/scripts/run-daily-jobs.sh
 ```
+
+The staged workflow runs on the systemd-based GCP VM. Local standalone scripts
+(`update_flat_files.py` and `run_theta_scan.py`) still write directly to their DB
+and require other readers to be stopped before saving. `--manage-service` remains
+available for legacy direct scans but stops the API for the entire scan.
 
 ### Redeploy Code Updates
 
@@ -535,12 +538,39 @@ DEPLOY_HOST=136.107.127.41 DEPLOY_BRANCH=terraform scripts/deploy-gcp.sh
 
 ### Daily Scheduled Jobs
 
-The cron runs at **9:30 UTC (5:30 AM ET)** on weekdays:
+The cron runs at **9:30 UTC (5:30 AM EDT / 4:30 AM EST)** on weekdays:
 
-1. Stops the API (~10 min downtime)
-2. Downloads and imports new flat files
-3. Runs theta scans from `backend/config/app_defaults.json`
-4. Restarts the API
+1. Acquires the same lock as deployment, checks disk space, and copies the live
+   DuckDB to a temporary directory beside it. The API keeps reading the live DB.
+2. Downloads and imports published flat files into the private copy. Strict mode
+   treats S3/listing/download/import failures as errors, not successful refreshes.
+   Unpublished dates (including market holidays) are not download failures.
+3. Runs theta scans from `backend/config/app_defaults.json` against the private DB.
+4. Validates options row count/date coverage and a fresh, complete saved scan for
+   every configured expiry. Individual unsupported tickers may still be skipped.
+5. Preserves a rollback link, briefly stops the API, atomically replaces the live
+   DB, starts the API and checks `/data-health` for the expected rows and scan times.
+   If the new API is unhealthy, restores the old DB and starts it again.
+
+**Availability:** this removes the long batch-processing outage, not every second
+of downtime. Only the final stop/start interrupts requests, normally a few seconds;
+draining requests or rollback can take longer. A failed build leaves the live DB
+and API untouched. The updater publishes whichever files Massive has actually
+listed; check Data health for the resulting date, not just the job's exit status.
+
+**Resources:** staging temporarily needs another full DB copy (currently about
+9 GB), plus room for downloads, growth and temporary import files. A preflight
+requires the DB size plus at least 2 GiB free; larger catch-up imports can need
+more. Completed/failed builds clean up staging files. If rollback itself fails,
+the log reports a `.decay-refresh-*` recovery directory that is deliberately kept.
+Do not remove it before recovering the database and API. Staged workers default
+to a 1 GB DuckDB memory limit and two threads; override with
+`DECAY_REFRESH_MEMORY_LIMIT` and `DECAY_REFRESH_THREADS` if needed.
+
+Only `decay-api` is restarted. Separately running MCP processes or other persistent
+DB readers must also reconnect/restart to see the newly published snapshot. Do not
+run direct DB writers alongside the staged workflow. The `DECAY_DB_PATH` override
+is set only for batch subprocesses; do not point the API at a staging file.
 
 Logs: `/var/log/decay/cron.log`
 

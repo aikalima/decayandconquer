@@ -1,11 +1,7 @@
 #!/bin/bash
 # Daily cron job: update flat files + run theta scans
-# Runs at 9:30 UTC (5:30 AM ET) weekdays via /etc/cron.d/decay-daily
+# Runs at 9:30 UTC weekdays via /etc/cron.d/decay-daily
 set -euo pipefail
-
-LOCKFILE="/tmp/decay-cron.lock"
-exec 200>"$LOCKFILE"
-flock -n 200 || { echo "$(date) Another job is running, skipping."; exit 0; }
 
 APP_DIR="/opt/decay_core"
 VENV="$APP_DIR/backend/.venv/bin/python"
@@ -18,36 +14,8 @@ echo "============================================"
 cd "$APP_DIR/backend"
 set -a; source "$APP_DIR/.env"; set +a
 
-# ---------------------------------------------------------------
-# 1. Stop API to release DuckDB lock for writes
-# ---------------------------------------------------------------
-echo "Stopping API..."
-trap 'sudo systemctl start decay-api' EXIT
-sudo systemctl stop decay-api
-
-# ---------------------------------------------------------------
-# 2. Update flat files (download + import new trading days)
-# ---------------------------------------------------------------
-echo ""
-echo "--- Updating flat files ---"
-$VENV programs/update_flat_files.py || echo "WARNING: Flat file update failed"
-
-# ---------------------------------------------------------------
-# 3. Theta scans — run configured target expiries
-# ---------------------------------------------------------------
-echo ""
-echo "--- Theta scans from config/app_defaults.json ---"
-$VENV programs/run_theta_scan.py --config config/app_defaults.json || {
-  echo "WARNING: One or more configured theta scans failed, continuing..."
-}
-
-# ---------------------------------------------------------------
-# 4. Restart API
-# ---------------------------------------------------------------
-echo ""
-echo "Restarting API..."
-sudo systemctl start decay-api
-trap - EXIT
+# Downloads, imports and scans use a private DB; only publication restarts the API.
+$VENV -u programs/refresh_data.py --service decay-api "$@"
 
 echo ""
 echo "============================================"

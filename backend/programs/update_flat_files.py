@@ -28,21 +28,21 @@ if _env_path.exists():
             key, val = line.split("=", 1)
             os.environ.setdefault(key.strip(), val.strip().strip("'\""))
 
-from programs.download_flat_files import get_s3_client, download_file, date_to_key
+from programs.download_flat_files import get_s3_client, download_file, date_to_key, list_files
 
 FLAT_FILES_DIR = Path(__file__).parent.parent / "app" / "data" / "flat_files"
 
 
 def find_latest_in_db() -> date | None:
     """Find the most recent trade_date actually imported into DuckDB."""
+    from app.data.db import get_db, close_db
     try:
-        from app.data.db import get_db
-        conn = get_db()
+        conn = get_db(read_only=True)
         result = conn.execute("SELECT MAX(trade_date) FROM options").fetchone()
         if result and result[0]:
             return date.fromisoformat(str(result[0]))
-    except Exception:
-        pass
+    finally:
+        close_db()
     return None
 
 
@@ -79,6 +79,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Show what would be downloaded")
     parser.add_argument("--download-only", action="store_true", help="Download but don't import")
     parser.add_argument("--up-to", type=str, default=None, help="End date (default: today)")
+    parser.add_argument("--strict", action="store_true", help="Require DB access and fail on any published-file download or import error")
     args = parser.parse_args()
 
     FLAT_FILES_DIR.mkdir(parents=True, exist_ok=True)
@@ -88,10 +89,14 @@ def main():
         latest = find_latest_in_db()
         source = "DB"
     except Exception:
+        if args.strict:
+            raise
         latest = None
         source = "DB (unavailable)"
 
     if latest is None:
+        if args.strict:
+            raise RuntimeError("Strict refresh requires an existing, nonempty options database")
         latest = find_latest_local_file()
         source = "filesystem (DB unavailable or empty)"
     if latest is None:
@@ -137,6 +142,14 @@ def main():
 
     # Download
     client = get_s3_client()
+    if args.strict:
+        # The S3 listing distinguishes unpublished days/holidays from access failures.
+        published = set()
+        for year, month in sorted({(d.year, d.month) for d in candidates}):
+            published.update(list_files(client, year, month))
+        available = [d for d in candidates if date_to_key(d) in published]
+        print(f"Published files available: {len(available)}; unpublished weekdays: {len(candidates) - len(available)}")
+        candidates = available
     downloaded = []
     failed = []
 
@@ -159,6 +172,8 @@ def main():
                 print(f"  MISSING {d.isoformat()} (probably a holiday)")
                 failed.append(d)
         except Exception as e:
+            if args.strict:
+                raise RuntimeError(f"Download failed for published file {d}") from e
             print(f"  FAILED {d.isoformat()}: {e}")
             failed.append(d)
 
@@ -166,6 +181,8 @@ def main():
     print(f"Downloaded: {len(downloaded)} files")
     if failed:
         print(f"Missing/failed: {len(failed)} ({', '.join(str(d) for d in failed)})")
+        if args.strict:
+            raise RuntimeError("Not all published files were downloaded")
 
     if args.download_only:
         print("Skipping import (--download-only)")
@@ -183,6 +200,8 @@ def main():
     if not ok:
         print(f"\nERROR: {msg}")
         print("Close the locking application and try again.")
+        if args.strict:
+            raise RuntimeError(msg)
         return
 
     print()
@@ -197,7 +216,20 @@ def main():
         try:
             total_rows += import_flat_file(f)
         except Exception as e:
+            if args.strict:
+                close_db()
+                raise RuntimeError(f"Import failed for {f.name}") from e
             print(f"  IMPORT FAILED {f.name}: {e}")
+
+    if args.strict:
+        from app.data.db import get_db
+        imported_dates = {str(row[0]) for row in get_db().execute(
+            "SELECT DISTINCT trade_date FROM options WHERE trade_date > ?", [latest]
+        ).fetchall()}
+        missing = [d for d in candidates if d.isoformat() not in imported_dates]
+        if missing:
+            close_db()
+            raise RuntimeError(f"Published files contained no imported options rows for: {missing}")
 
     elapsed = time.time() - start
     print()
