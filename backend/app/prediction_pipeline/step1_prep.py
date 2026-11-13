@@ -28,7 +28,8 @@ def validate_quotes(df: pd.DataFrame) -> pd.DataFrame:
 
     out = df.copy()
     n_before = len(out)
-    out = out[(out["strike"] > 0) & (out["last_price"] >= 0)]
+    out = out[np.isfinite(out["strike"]) & np.isfinite(out["last_price"])
+              & (out["strike"] > 0) & (out["last_price"] >= 0)]
     n_dropped = n_before - len(out)
     if n_dropped:
         logger.warning("validate_quotes: dropped %d rows with invalid strike/price", n_dropped)

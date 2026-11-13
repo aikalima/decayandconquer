@@ -134,7 +134,7 @@ server {
     index index.html;
 
     # API proxy (matches all backend routes)
-    location ~ ^/(app-defaults|chat|predict|predict-stream|market-context|theta-plays|theta-expiries|heatmap-stream|theta-plays-stream|ping) {
+    location ~ ^/(data-health|app-defaults|chat|predict|predict-stream|market-context|theta-plays|theta-expiries|heatmap-stream|theta-plays-stream|ping) {
         proxy_pass http://127.0.0.1:6173;
         proxy_http_version 1.1;
         proxy_set_header Host $host;

@@ -82,6 +82,66 @@ venv/bin/python -m pytest tests/ -v
 
 22 tests cover the prediction pipeline, API endpoints, and backtest scoring logic.
 
+### Read-Only Query Benchmark
+
+From the repository root, compare full-history queries with the optimized
+recent-history and existence queries against your existing database:
+
+```bash
+backend/.venv/bin/python backend/programs/benchmark_queries.py --repeats 7 \
+  --json /tmp/decay-queries-$(date +%Y%m%d-%H%M%S).json
+backend/.venv/bin/python -m pytest backend/tests/test_db_queries.py -q
+```
+
+Use `--db /data/decay/db/options.duckdb` on the GCP instance. Optional
+`--tickers SPY NVDA MSFT` and `--days 5 30 180` select the cases. This opens
+DuckDB read-only, makes no external API calls, and does not delete data, build
+indexes, or change the schema. Run when imports/scans are idle for comparable
+measurements; an active database writer may prevent a read-only connection.
+
+The benchmark warms both paths, alternates their execution order, reports
+median timings and raw samples, and checks exact result equality. These are
+warm-query measurements, not cold-disk or whole-application latency estimates.
+Both daily-price paths use the same deterministic tie-break (lowest strike,
+then earliest expiry, then contract ticker). The old strike-only ordering
+could produce different prices on repeated parallel scans. Prices remain
+options-derived estimates, not actual underlying stock closes.
+
+Recent-price queries use the latest date in the database, not today's date,
+and fall back to full history when the recent window has too few observations.
+Sparse/inactive tickers may therefore be slightly slower. No result cache is
+used, so newly imported data is immediately visible to these queries.
+
+### Calculation Inputs and Data Health
+
+Predictions, chat, and Prediction MCP share point-in-time input preparation.
+Actual unadjusted Massive daily stock closes are requested for the options
+observation dates and cached under `backend/app/data/cache/stock_daily/`.
+Online cache entries refresh daily to pick up provider corrections. These
+are completed daily bars, not live intraday prices. `MASSIVE_API_KEY` is needed;
+the launcher scripts load it from the project `.env`.
+
+When actual prices are unavailable, estimates are explicitly flagged with
+their dates in result metadata. IV averaging uses each day's own stock price.
+Option maturity is separate from forecast horizon; different-expiry horizon
+projections disclose their constant-volatility assumption. Historical API
+chains never use live snapshots, substituted expiries, or previous-day trades;
+legacy chain/spot cache entries are ignored without deleting them.
+
+Backtest scoring requires an actual stock close on the exact target date.
+Missing/non-trading-day targets are not scored against later prices or
+options-derived estimates. Density clipping diagnostics and model limitations
+are included in responses. Dividend adjustments, American exercise modelling,
+and empirical probability calibration are not yet implemented.
+
+`GET /data-health` and the dashboard's expandable Data health strip report
+options date coverage, calendar-day age, and scan timestamps. Weekday gaps are
+explicitly unclassified: they may be holidays or failed imports. Coverage is
+dataset-wide, not a guarantee that every ticker/contract is complete. Refresh
+job state is reported as unknown, never inferred from a scan timestamp.
+The endpoint does not download or alter data. Options history still needs the
+normal flat-file refresh; fetching current stock prices does not refresh it.
+
 ## CLI Tools
 
 All CLI tools live in `backend/programs/` and run from the `backend/` directory with the virtualenv activated. API keys are loaded from `.env` in the project root.
@@ -217,7 +277,7 @@ python programs/backtest.py --ticker AAPL --dates 2025-01-06 2025-01-13 --days-f
 
 ### Prediction MCP Server
 
-The Prediction MCP server exposes the Backtest & Forecast feature to MCP clients as read-only local tools. It uses DuckDB data directly, so it can run alongside the web app and does not require live Massive API calls for normal prediction/backtest queries.
+The Prediction MCP server exposes the Backtest & Forecast feature to MCP clients without modifying the historical DuckDB database. It reads local options data and fetches date-matched, unadjusted daily stock closes from Massive, with a local cache refreshed daily. Set `MASSIVE_API_KEY` in the project `.env`; the startup scripts load it. Missing underlying prices are explicitly flagged as estimates, and backtests are scored only when an actual target-date stock close is available.
 
 ```bash
 # Run the MCP server over stdio

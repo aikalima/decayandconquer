@@ -10,6 +10,11 @@ export interface PredictionMeta {
   expiry_used: string;
   data_source?: string;
   realized_price?: number;
+  realized_date?: string;
+  spot_source?: string;
+  mode?: "forecast" | "backtest";
+  warnings?: string[];
+  option_days_to_expiry?: number;
 }
 
 export interface IvSmile {

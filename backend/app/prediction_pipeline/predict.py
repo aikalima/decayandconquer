@@ -12,7 +12,7 @@ Returns a PipelineResult with the PDF/CDF DataFrame and IV smile data.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 import numpy as np
 import pandas as pd
@@ -33,6 +33,7 @@ class PipelineResult:
     iv_smooth_values: list[float]
     n_strikes_used: int                 # how many strikes had valid IV
     greeks: dict[str, list[float]]      # per-strike delta, gamma, theta, vega
+    diagnostics: dict = field(default_factory=dict)
 
 
 def _iv_to_result(
@@ -62,7 +63,8 @@ def _iv_to_result(
     greeks = compute_greeks((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate)
 
     # Breeden-Litzenberger PDF
-    strikes, pdf = extract_pdf((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate)
+    diagnostics = {}
+    strikes, pdf = extract_pdf((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate, diagnostics)
 
     # Optional KDE smoothing
     if kernel_smooth:
@@ -79,6 +81,7 @@ def _iv_to_result(
         iv_smooth_values=smooth_iv.tolist(),
         n_strikes_used=n_strikes,
         greeks=greeks,
+        diagnostics=diagnostics,
     )
 
 
@@ -94,6 +97,7 @@ def predict_price(
     solver: str = "brent",
     bspline: BSplineParams = BSplineParams(),
     kernel_smooth: bool = False,
+    option_days_to_expiry: int | None = None,
 ) -> PipelineResult:
     """Run the pipeline from a single day's options chain."""
     df = quotes.copy()
@@ -101,7 +105,10 @@ def predict_price(
         df[col] = df[col].astype(np.float64)
 
     df = validate_quotes(df)
-    df = calculate_IV(df, spot, days_forward, risk_free_rate, solver)
+    maturity = days_forward if option_days_to_expiry is None else option_days_to_expiry
+    if days_forward <= 0 or maturity <= 0:
+        raise ValueError("Forecast horizon and option maturity must be positive")
+    df = calculate_IV(df, spot, maturity, risk_free_rate, solver)
 
     return _iv_to_result(df, spot, days_forward, risk_free_rate, bspline, kernel_smooth)
 
@@ -115,8 +122,13 @@ def predict_price_averaged(
     solver: str = "brent",
     bspline: BSplineParams = BSplineParams(),
     kernel_smooth: bool = False,
+    spots_by_date: dict[str, float] | None = None,
 ) -> PipelineResult:
     """Run the pipeline using IV averaged across multiple days."""
+    if spots_by_date is None:
+        raise ValueError("spots_by_date is required for historical IV averaging")
+    if days_forward <= 0:
+        raise ValueError("Forecast horizon must be positive")
     days_forward_by_date = {}
     validated = {}
     for date_str, chain in chains_by_date.items():
@@ -130,7 +142,7 @@ def predict_price_averaged(
             validated[date_str] = df
 
     iv_df = calculate_IV_averaged(
-        validated, spot, days_forward_by_date, risk_free_rate, solver,
+        validated, spots_by_date, days_forward_by_date, risk_free_rate, solver,
     )
 
     return _iv_to_result(iv_df, spot, days_forward, risk_free_rate, bspline, kernel_smooth)
@@ -148,6 +160,7 @@ def predict_price_with_progress(
     solver: str = "brent",
     bspline: BSplineParams = BSplineParams(),
     kernel_smooth: bool = False,
+    option_days_to_expiry: int | None = None,
 ):
     yield ("Validating quotes", 50)
     df = quotes.copy()
@@ -156,7 +169,10 @@ def predict_price_with_progress(
     df = validate_quotes(df)
 
     yield ("Solving implied volatility", 55)
-    df = calculate_IV(df, spot, days_forward, risk_free_rate, solver)
+    maturity = days_forward if option_days_to_expiry is None else option_days_to_expiry
+    if days_forward <= 0 or maturity <= 0:
+        raise ValueError("Forecast horizon and option maturity must be positive")
+    df = calculate_IV(df, spot, maturity, risk_free_rate, solver)
 
     if len(df) < 5:
         raise ValueError(f"Only {len(df)} options survived IV solving (need at least 5).")
@@ -170,7 +186,8 @@ def predict_price_with_progress(
     greeks = compute_greeks((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate)
 
     yield ("Extracting price distribution", 80)
-    strikes, pdf = extract_pdf((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate)
+    diagnostics = {}
+    strikes, pdf = extract_pdf((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate, diagnostics)
 
     if kernel_smooth:
         yield ("Smoothing distribution (KDE)", 85)
@@ -187,6 +204,7 @@ def predict_price_with_progress(
         iv_smooth_values=smooth_iv.tolist(),
         n_strikes_used=len(iv_raw_strikes),
         greeks=greeks,
+        diagnostics=diagnostics,
     )
 
 
@@ -199,7 +217,12 @@ def predict_price_averaged_with_progress(
     solver: str = "brent",
     bspline: BSplineParams = BSplineParams(),
     kernel_smooth: bool = False,
+    spots_by_date: dict[str, float] | None = None,
 ):
+    if spots_by_date is None:
+        raise ValueError("spots_by_date is required for historical IV averaging")
+    if days_forward <= 0:
+        raise ValueError("Forecast horizon must be positive")
     yield ("Validating quotes", 30)
     days_forward_by_date = {}
     validated = {}
@@ -215,7 +238,7 @@ def predict_price_averaged_with_progress(
 
     yield (f"Averaging IV across {len(validated)} days", 40)
     iv_df = calculate_IV_averaged(
-        validated, spot, days_forward_by_date, risk_free_rate, solver,
+        validated, spots_by_date, days_forward_by_date, risk_free_rate, solver,
     )
 
     if len(iv_df) < 5:
@@ -230,7 +253,8 @@ def predict_price_averaged_with_progress(
     greeks = compute_greeks((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate)
 
     yield ("Extracting price distribution", 80)
-    strikes, pdf = extract_pdf((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate)
+    diagnostics = {}
+    strikes, pdf = extract_pdf((smooth_strikes, smooth_iv), spot, days_forward, risk_free_rate, diagnostics)
 
     if kernel_smooth:
         yield ("Smoothing distribution (KDE)", 85)
@@ -247,4 +271,5 @@ def predict_price_averaged_with_progress(
         iv_smooth_values=smooth_iv.tolist(),
         n_strikes_used=len(iv_raw_strikes),
         greeks=greeks,
+        diagnostics=diagnostics,
     )

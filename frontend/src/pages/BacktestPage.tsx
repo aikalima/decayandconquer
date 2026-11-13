@@ -123,7 +123,7 @@ export default function BacktestPage() {
   }, [defaultsReady, predictionDefaults]);
 
   const median = data ? computeMedian(data) : 0;
-  const isPrediction = meta ? !meta.realized_price : false;
+  const isPrediction = meta?.mode === "forecast";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
@@ -182,6 +182,11 @@ export default function BacktestPage() {
 
       {data && meta && (
         <>
+          <section style={{ borderLeft: "3px solid var(--risk)", padding: "8px 14px", fontSize: 14, lineHeight: 1.5 }} aria-label="Calculation provenance">
+            <strong>{meta.mode === "backtest" ? "Historical backtest" : "Forecast"} · Observation {meta.obs_date} · Option expiry {meta.expiry_used}</strong>
+            <p style={{ margin: "6px 0" }}>Stock price: {meta.spot_source === "massive_daily_unadjusted" ? "actual daily close" : "options-derived estimate"}. Probabilities describe finishing prices under the risk-neutral model, not the chance of touching a price before expiry.</p>
+            {meta.warnings?.map(warning => <p key={warning} style={{ margin: "6px 0" }}>{warning}</p>)}
+          </section>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 20, alignItems: "stretch" }}>
             <SummaryStats data={data} meta={meta} />
             <MarketContext

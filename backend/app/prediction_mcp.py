@@ -12,20 +12,12 @@ from datetime import date, timedelta
 from typing import Literal
 
 import numpy as np
-import pandas as pd
 from mcp.server import MCPServer
 
 from app.data.db import (
-    find_best_expiry,
-    find_best_expiry_in_range,
-    get_db,
     get_stats,
-    has_data,
-    query_chain,
-    query_chains_range,
     set_read_only,
 )
-from app.data.fetcher import find_nearest_expiry_friday
 from app.defaults import build_app_defaults
 from app.prediction_pipeline.predict import PipelineResult, predict_price, predict_price_averaged
 from app.prediction_pipeline.step3_smooth_iv import BSplineParams
@@ -39,7 +31,8 @@ mcp = MCPServer(
     description="Read-only local access to prediction and backtest features backed by DuckDB options data.",
     instructions=(
         "Use these tools to run Decay And Conquer price-distribution predictions and compact "
-        "historical backtests. Data is read from local DuckDB and may lag the market."
+        "historical backtests. Options are read from local DuckDB and may lag the market. "
+        "Actual daily stock closes are fetched from Massive when configured and cached locally."
     ),
     log_level="ERROR",
 )
@@ -54,36 +47,10 @@ def _parse_date(value: str, field: str) -> date:
         raise ValueError(f"{field} must be a valid YYYY-MM-DD date")
 
 
-def _chain_spot(chain: pd.DataFrame) -> float:
-    """Approximate spot from the deepest ITM call in the option chain."""
-    if chain.empty:
-        raise ValueError("option chain is empty")
-    return float(chain.iloc[0]["strike"] + chain.iloc[0]["last_price"])
-
-
 def _realized_price_from_db(ticker: str, target: date) -> dict | None:
-    """Approximate realized underlying price from local options data."""
-    db = get_db()
-    row = db.execute("""
-        SELECT trade_date,
-               MIN(strike) AS min_strike,
-               FIRST(close ORDER BY strike) AS min_strike_price
-        FROM options
-        WHERE underlying = ?
-          AND contract_type = 'C'
-          AND close > 0
-          AND trade_date >= ?
-        GROUP BY trade_date
-        ORDER BY trade_date
-        LIMIT 1
-    """, [ticker, target.isoformat()]).fetchone()
-    if not row:
-        return None
-    return {
-        "date": str(row[0]),
-        "price": round(float(row[1] + row[2]), 2),
-        "basis": "nearest local options trading date on or after target_date",
-    }
+    """Use only an actual stock close on the target date."""
+    from app.data.underlying import realized_close
+    return realized_close(ticker, target)
 
 
 def _score_distribution(result: PipelineResult, spot: float, price_targets: list[float] | None = None) -> dict:
@@ -137,52 +104,19 @@ def _run_prediction(
     if days_forward <= 0:
         raise ValueError("target_date must be after obs_date_to")
 
-    bspline = BSplineParams()
-    desired_expiry = find_nearest_expiry_friday(obs_to, days_forward)
-    is_range = obs_from != obs_to
-
-    if is_range:
-        db_expiry = find_best_expiry_in_range(ticker, obs_from, obs_to, desired_expiry)
-        if not db_expiry:
-            raise ValueError(f"No options data in DB for {ticker} from {obs_from} to {obs_to}")
-        all_rows = query_chains_range(ticker, obs_from, obs_to, db_expiry)
-        chains = {
-            str(td)[:10]: grp[["strike", "last_price", "bid", "ask"]].reset_index(drop=True)
-            for td, grp in all_rows.groupby("trade_date")
-        }
-        latest_chain = chains[max(chains.keys())]
-        spot = _chain_spot(latest_chain)
-        result = predict_price_averaged(
-            chains_by_date=chains,
-            spot=spot,
-            days_forward=days_forward,
-            expiry=db_expiry,
-            risk_free_rate=risk_free_rate,
-            solver=solver,
-            bspline=bspline,
-            kernel_smooth=kernel_smooth,
-        )
-        data_source = "duckdb_range"
-        days_averaged = len(chains)
+    from app.prediction_inputs import prepare_prediction
+    inputs = prepare_prediction(ticker, obs_from, obs_to, target)
+    chains, spot, db_expiry = inputs.chains, inputs.spot, inputs.expiry
+    days_forward = inputs.days_forward
+    common = dict(spot=spot, days_forward=days_forward, risk_free_rate=risk_free_rate,
+                  solver=solver, bspline=BSplineParams(), kernel_smooth=kernel_smooth)
+    if len(chains) > 1:
+        result = predict_price_averaged(chains_by_date=chains, expiry=db_expiry,
+                                       spots_by_date=inputs.spots, **common)
     else:
-        if not has_data(ticker, obs_to):
-            raise ValueError(f"No options data in DB for {ticker} on {obs_to}")
-        db_expiry = find_best_expiry(ticker, obs_to, desired_expiry)
-        if not db_expiry:
-            raise ValueError(f"No expiry near {desired_expiry} for {ticker} on {obs_to}")
-        chain = query_chain(ticker, obs_to, db_expiry)
-        spot = _chain_spot(chain)
-        result = predict_price(
-            quotes=chain,
-            spot=spot,
-            days_forward=days_forward,
-            risk_free_rate=risk_free_rate,
-            solver=solver,
-            bspline=bspline,
-            kernel_smooth=kernel_smooth,
-        )
-        data_source = "duckdb"
-        days_averaged = 1
+        result = predict_price(quotes=next(iter(chains.values())),
+                               option_days_to_expiry=(db_expiry-inputs.observation).days, **common)
+    data_source, days_averaged = "duckdb", len(chains)
 
     summary = _score_distribution(result, spot, price_targets)
     realized = _realized_price_from_db(ticker, target)
@@ -210,6 +144,12 @@ def _run_prediction(
         "realized": realized,
     }
 
+    output.update(inputs.meta)
+    output["fit_diagnostics"] = result.diagnostics
+    if result.diagnostics.get("clipped_negative_fraction", 0) > 0.01:
+        output["warnings"].append("Material negative density was clipped; the distribution may be unreliable.")
+    if inputs.meta["mode"] == "backtest" and not realized:
+        output["warnings"].append("No actual stock close on target date; this run is not scored.")
     points = max(0, min(int(include_distribution_points), 500))
     if points:
         sample = result.df.iloc[np.linspace(0, len(result.df) - 1, points, dtype=int)]
@@ -330,7 +270,7 @@ def run_backtest(
             )
             realized = prediction.get("realized")
             if not realized:
-                errors.append({"obs_date": obs.isoformat(), "error": "No realized price in local DB"})
+                errors.append({"obs_date": obs.isoformat(), "error": "No actual stock close available on target date"})
                 continue
             summary = prediction["summary"]
             rows.append({
@@ -338,6 +278,8 @@ def run_backtest(
                 "target_date": target.isoformat(),
                 "realized_date": realized["date"],
                 "spot": prediction["spot"],
+                "spot_source": prediction["spot_source"],
+                "warnings": prediction["warnings"],
                 "realized_price": realized["price"],
                 "predicted_median": summary["median"],
                 "predicted_mean": summary["mean"],

@@ -13,13 +13,8 @@ from typing import Any, Literal
 
 import numpy as np
 
-from app.prediction_pipeline.predict import predict_price, predict_price_averaged, PipelineResult
-from app.prediction_pipeline.step3_smooth_iv import BSplineParams
-from app.data.db import (
-    get_db, query_chain, query_chains_range, has_data,
-    find_best_expiry, find_best_expiry_in_range, get_stats,
-)
-from app.data.fetcher import find_nearest_expiry_friday
+from app.prediction_pipeline.predict import predict_price, predict_price_averaged
+from app.data.db import get_db, get_stats
 
 logger = logging.getLogger(__name__)
 
@@ -199,33 +194,19 @@ def _run_prediction_tool(params: dict) -> dict:
     if days_forward <= 0:
         return {"error": "target_date must be after obs_date_to"}
 
-    expiry = find_nearest_expiry_friday(obs_to_d, days_forward)
     is_range = obs_from_d != obs_to_d
 
     try:
-        # Get spot price from daily closes (more reliable than options intrinsic)
-        from app.data.db import query_daily_closes
-        daily = query_daily_closes(ticker, 5)
-        spot_from_daily = daily[-1][1] if daily else None
-
-        if is_range:
-            db_expiry = find_best_expiry_in_range(ticker, obs_from_d, obs_to_d, expiry)
-            if not db_expiry:
-                return {"error": f"No options data in DB for {ticker} from {obs_from} to {obs_to}"}
-            all_rows = query_chains_range(ticker, obs_from_d, obs_to_d, db_expiry)
-            chains = {}
-            for td, grp in all_rows.groupby("trade_date"):
-                chains[str(td)[:10]] = grp[["strike", "last_price", "bid", "ask"]].reset_index(drop=True)
-            latest = max(chains.keys())
-            spot = spot_from_daily or float(chains[latest].iloc[0]["strike"] + chains[latest].iloc[0]["last_price"])
-            result = predict_price_averaged(chains, spot, days_forward, db_expiry, rfr)
+        from app.prediction_inputs import prepare_prediction
+        from app.data.underlying import realized_close
+        inputs = prepare_prediction(ticker, obs_from_d, obs_to_d, target_d)
+        chains, spot, db_expiry = inputs.chains, inputs.spot, inputs.expiry
+        days_forward = inputs.days_forward
+        if len(chains) > 1:
+            result = predict_price_averaged(chains, spot, days_forward, db_expiry, rfr, spots_by_date=inputs.spots)
         else:
-            db_expiry = find_best_expiry(ticker, obs_from_d, expiry)
-            if not db_expiry:
-                return {"error": f"No options data in DB for {ticker} on {obs_from}"}
-            chain = query_chain(ticker, obs_from_d, db_expiry)
-            spot = spot_from_daily or float(chain.iloc[0]["strike"] + chain.iloc[0]["last_price"])
-            result = predict_price(chain, spot, days_forward, rfr)
+            result = predict_price(next(iter(chains.values())), spot, days_forward, rfr,
+                                   option_days_to_expiry=(db_expiry - inputs.observation).days)
 
         df = result.df
         prices, pdf, cdf = df["Price"].values, df["PDF"].values, df["CDF"].values
@@ -245,12 +226,20 @@ def _run_prediction_tool(params: dict) -> dict:
             "p95": round(float(np.interp(0.95, cdf, prices)), 2),
             "n_strikes": result.n_strikes_used, "has_chart_data": True,
         }
+        output.update(inputs.meta)
+        output["fit_diagnostics"] = result.diagnostics
+        if result.diagnostics.get("clipped_negative_fraction", 0) > 0.01:
+            output["warnings"].append("Material negative density was clipped; the distribution may be unreliable.")
 
         if target_d <= date.today():
             try:
-                from app.data.fetcher import fetch_spot_price, get_client
-                realized = fetch_spot_price(ticker, target_d, get_client(), rate_limit_sleep=0.5)
+                observation = realized_close(ticker, target_d)
+                if not observation:
+                    output["warnings"].append("No actual stock close on the target date; this run is not scored.")
+                    return output
+                realized = observation["price"]
                 output["realized_price"] = round(realized, 2)
+                output["realized_date"] = observation["date"]
                 output["cdf_percentile"] = round(float(np.interp(realized, prices, cdf)), 4)
                 output["prediction_error"] = round(realized - median_p, 2)
             except Exception:

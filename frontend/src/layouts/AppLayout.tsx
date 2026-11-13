@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import Header from "./Header";
 import ChatPanel from "../components/ChatPanel";
+import DataHealth from "../components/DataHealth";
 
 function getChatPref(): boolean {
   const v = localStorage.getItem("dacey_open");
@@ -39,6 +40,7 @@ export default function AppLayout() {
             scrollbarWidth: "none",
           }}
         >
+          <DataHealth />
           <Outlet />
         </main>
 

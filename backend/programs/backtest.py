@@ -144,7 +144,8 @@ def run_backtest(
             pred_df = predict_price(
                 quotes=chain,
                 spot=spot,
-                days_forward=days_forward,
+                days_forward=(expiry_date - obs_date).days,
+                option_days_to_expiry=(expiry_date - obs_date).days,
                 risk_free_rate=risk_free_rate,
                 solver=solver,
                 bspline=bspline,

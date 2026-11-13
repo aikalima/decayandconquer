@@ -90,6 +90,8 @@ def calculate_IV(
     """
     if solver not in SOLVERS:
         raise ValueError(f"Unknown solver '{solver}'. Choose from: {list(SOLVERS)}")
+    if not np.isfinite(spot) or spot <= 0 or days_forward <= 0 or not np.isfinite(risk_free_rate):
+        raise ValueError("Spot and option maturity must be positive, finite values")
 
     iv_fn = SOLVERS[solver]
     years_forward = days_forward / 365
@@ -109,7 +111,7 @@ def calculate_IV(
 
 def calculate_IV_averaged(
     chains_by_date: dict[str, pd.DataFrame],
-    spot: float,
+    spots_by_date: dict[str, float],
     days_forward_by_date: dict[str, int],
     risk_free_rate: float,
     solver: Literal["newton", "brent"] = "brent",
@@ -118,7 +120,7 @@ def calculate_IV_averaged(
 
     Args:
         chains_by_date: {trade_date_str: DataFrame[strike, last_price, bid, ask]}
-        spot: reference spot price (typically from the last date in the range)
+        spots_by_date: underlying price on each observation date (no future prices)
         days_forward_by_date: {trade_date_str: days_to_expiry_from_that_date}
         risk_free_rate: annualised risk-free rate
         solver: IV solver method
@@ -129,12 +131,15 @@ def calculate_IV_averaged(
     """
     all_ivs = []
 
+    if set(chains_by_date) - set(spots_by_date):
+        raise ValueError("A contemporaneous stock price is required for every observation date")
+
     for trade_date, chain in chains_by_date.items():
         days_fwd = days_forward_by_date[trade_date]
         if days_fwd <= 0:
             continue
         try:
-            with_iv = calculate_IV(chain, spot, days_fwd, risk_free_rate, solver)
+            with_iv = calculate_IV(chain, spots_by_date[trade_date], days_fwd, risk_free_rate, solver)
             if len(with_iv) > 0:
                 all_ivs.append(with_iv[["strike", "iv"]])
         except Exception as e:

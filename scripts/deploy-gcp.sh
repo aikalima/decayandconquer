@@ -128,8 +128,12 @@ sudo systemctl restart decay-api
 
 echo ""
 echo "--- Nginx route check ---"
-if [[ -f /etc/nginx/sites-available/decay ]] && ! sudo grep -q 'app-defaults' /etc/nginx/sites-available/decay; then
-  sudo sed -i 's#location ~ \^/(#location ~ ^/(app-defaults|#' /etc/nginx/sites-available/decay
+if [[ -f /etc/nginx/sites-available/decay ]]; then
+  for route in app-defaults data-health; do
+    if ! sudo grep -q "$route" /etc/nginx/sites-available/decay; then
+      sudo sed -i "s#location ~ \\^/(#location ~ ^/($route|#" /etc/nginx/sites-available/decay
+    fi
+  done
   sudo nginx -t
   sudo systemctl reload nginx
 fi

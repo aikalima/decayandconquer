@@ -3,33 +3,21 @@ import logging
 import os
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Optional, AsyncGenerator
+from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-import pandas as pd
 
 from app.modules.health import get_ping_response
 from app.prediction_pipeline.predict import (
-    predict_price, predict_price_averaged,
     predict_price_with_progress, predict_price_averaged_with_progress,
     PipelineResult,
 )
 from app.prediction_pipeline.step3_smooth_iv import BSplineParams
-from app.data.db import (
-    query_chain, query_chains_range, has_data,
-    find_best_expiry, find_best_expiry_in_range,
-    set_read_only,
-)
+from app.data.db import set_read_only
 
 # Server only reads from DuckDB — never hold a write lock
 set_read_only(True)
-from app.data.fetcher import (
-    fetch_options_chain,
-    fetch_spot_price,
-    get_client,
-    find_nearest_expiry_friday,
-)
 from app.news import fetch_market_context
 from app.screener import scan_all, DEFAULT_TICKERS
 from app.defaults import build_app_defaults
@@ -69,70 +57,50 @@ def _build_response(result: PipelineResult, meta: dict) -> dict:
     }
 
 
-def _get_realized_price(ticker: str, target_date: date) -> Optional[float]:
-    if target_date > date.today():
-        return None
-    try:
-        client = get_client()
-        return fetch_spot_price(ticker, target_date, client, rate_limit_sleep=0.5)
-    except Exception:
-        return None
+def _prediction_steps(
+    ticker, obs_date, obs_date_from, obs_date_to, target_date, days_forward,
+    risk_free_rate, solver, bspline_k, bspline_smooth, bspline_dx, kernel_smooth,
+):
+    from app.prediction_inputs import prepare_prediction
+    from app.data.underlying import realized_close
 
-
-def _get_chain_and_spot_single(
-    ticker: str, observation: date, expiry: date, source_log: list[str],
-) -> tuple[pd.DataFrame, float]:
-    """Single-day: DuckDB first, API fallback."""
-    if has_data(ticker, observation):
-        db_expiry = find_best_expiry(ticker, observation, expiry)
-        if db_expiry:
-            try:
-                chain = query_chain(ticker, observation, db_expiry)
-                if len(chain) >= 5:
-                    spot = float(chain.iloc[0]["strike"] + chain.iloc[0]["last_price"])
-                    source_log.append("duckdb")
-                    return chain, spot
-            except ValueError:
-                pass
-
-    source_log.append("api")
-    client = get_client()
-    spot = fetch_spot_price(ticker, observation, client, rate_limit_sleep=0.5)
-    chain = fetch_options_chain(
-        ticker, observation, expiry, spot=spot,
-        client=client, rate_limit_sleep=0.5,
-    )
-    return chain, spot
-
-
-def _get_chains_range(
-    ticker: str, date_from: date, date_to: date, expiry: date,
-) -> tuple[dict[str, pd.DataFrame], float, date, str]:
-    """Multi-day: query DuckDB for chains across the date range.
-
-    Returns (chains_by_date, spot, db_expiry, source).
-    Spot is estimated from the latest date's deepest ITM call.
-    """
-    db_expiry = find_best_expiry_in_range(ticker, date_from, date_to, expiry)
-    if db_expiry is None:
-        raise ValueError(
-            f"No options data in DB for {ticker} from {date_from} to {date_to} near expiry {expiry}"
-        )
-
-    all_rows = query_chains_range(ticker, date_from, date_to, db_expiry)
-
-    chains_by_date: dict[str, pd.DataFrame] = {}
-    for trade_date, group in all_rows.groupby("trade_date"):
-        # DuckDB may return date as datetime or date object — normalise to YYYY-MM-DD string
-        date_str = str(trade_date)[:10]
-        chains_by_date[date_str] = group[["strike", "last_price", "bid", "ask"]].reset_index(drop=True)
-
-    # Spot from the latest date's deepest ITM call
-    latest_date = max(chains_by_date.keys())
-    latest_chain = chains_by_date[latest_date]
-    spot = float(latest_chain.iloc[0]["strike"] + latest_chain.iloc[0]["last_price"])
-
-    return chains_by_date, spot, db_expiry, "duckdb"
+    if bool(obs_date_from) != bool(obs_date_to):
+        raise ValueError("Both observation range dates are required")
+    start = date.fromisoformat(obs_date_from or obs_date or (date.today() - timedelta(days=1)).isoformat())
+    end = date.fromisoformat(obs_date_to) if obs_date_to else start
+    target = date.fromisoformat(target_date) if target_date else end + timedelta(days=days_forward)
+    yield {"stage": "Loading date-matched options and stock prices", "progress": 10}
+    inputs = prepare_prediction(ticker, start, end, target)
+    common = dict(spot=inputs.spot, days_forward=inputs.days_forward,
+                  risk_free_rate=risk_free_rate, solver=solver,
+                  bspline=BSplineParams(k=bspline_k, smooth=bspline_smooth, dx=bspline_dx),
+                  kernel_smooth=kernel_smooth)
+    if len(inputs.chains) > 1:
+        steps = predict_price_averaged_with_progress(
+            chains_by_date=inputs.chains, expiry=inputs.expiry,
+            spots_by_date=inputs.spots, **common)
+    else:
+        steps = predict_price_with_progress(
+            quotes=next(iter(inputs.chains.values())),
+            option_days_to_expiry=(inputs.expiry - inputs.observation).days, **common)
+    result = None
+    for step in steps:
+        if isinstance(step, PipelineResult):
+            result = step
+        else:
+            yield {"stage": step[0], "progress": step[1]}
+    meta = inputs.meta
+    meta["fit_diagnostics"] = result.diagnostics
+    if result.diagnostics.get("clipped_negative_fraction", 0) > 0.01:
+        meta["warnings"].append("The fitted density required material negative-mass clipping. Treat this distribution with caution.")
+    realized = realized_close(ticker.upper(), target)
+    if realized:
+        meta["realized_price"] = realized["price"]
+        meta["realized_date"] = realized["date"]
+        meta["realized_source"] = realized["basis"]
+    elif meta["mode"] == "backtest":
+        meta["warnings"].append("No actual stock close is available on the target date; this run is not scored.")
+    yield {"done": True, "progress": 100, "result": _build_response(result, meta)}
 
 
 @app.get("/ping")
@@ -145,6 +113,12 @@ async def ping():
 async def app_defaults():
     """Return date-aware frontend and batch defaults."""
     return build_app_defaults()
+
+
+@app.get("/data-health")
+async def data_health():
+    from app.data_health import get_data_health
+    return get_data_health()
 
 
 @app.post("/chat")
@@ -188,112 +162,16 @@ async def predict_price_route(
     bspline_dx: float = 0.1,
     kernel_smooth: bool = True,
 ):
-    """Run the prediction pipeline.
-
-    Single-day: provide obs_date (or obs_date_from == obs_date_to).
-    Date range: provide obs_date_from + obs_date_to for IV averaging.
-    """
-    ticker_upper = ticker.upper()
-    bspline = BSplineParams(k=bspline_k, smooth=bspline_smooth, dx=bspline_dx)
-
+    params = locals()
     try:
-        # Determine if single-day or range
-        date_from = date.fromisoformat(obs_date_from) if obs_date_from else None
-        date_to = date.fromisoformat(obs_date_to) if obs_date_to else None
-        single_date = date.fromisoformat(obs_date) if obs_date else None
-
-        is_range = date_from is not None and date_to is not None and date_from != date_to
-
-        if is_range:
-            # Date range mode — IV averaging
-            if target_date:
-                target = date.fromisoformat(target_date)
-                days_forward = (target - date_to).days
-                if days_forward <= 0:
-                    raise ValueError("target_date must be after obs_date_to")
-
-            expiry = find_nearest_expiry_friday(date_to, days_forward)
-            chains_by_date, spot, db_expiry, source = _get_chains_range(
-                ticker_upper, date_from, date_to, expiry,
-            )
-
-            logger.info(
-                "predict (range): %s %s to %s, %d days, expiry=%s, spot=%.2f, source=%s",
-                ticker_upper, date_from, date_to, len(chains_by_date), db_expiry, spot, source,
-            )
-
-            result = predict_price_averaged(
-                chains_by_date=chains_by_date, spot=spot, days_forward=days_forward,
-                expiry=db_expiry, risk_free_rate=risk_free_rate, solver=solver,
-                bspline=bspline, kernel_smooth=kernel_smooth,
-            )
-
-            target_actual = date_to + timedelta(days=days_forward)
-            meta = {
-                "ticker": ticker_upper,
-                "obs_date_from": date_from.isoformat(),
-                "obs_date_to": date_to.isoformat(),
-                "obs_date": date_to.isoformat(),
-                "target_date": target_actual.isoformat(),
-                "days_forward": days_forward,
-                "days_averaged": len(chains_by_date),
-                "spot": spot,
-                "expiry_used": db_expiry.isoformat(),
-                "data_source": source,
-            }
-
-        else:
-            # Single-day mode
-            observation = single_date or date_from or date.today()
-            if target_date:
-                target = date.fromisoformat(target_date)
-                days_forward = (target - observation).days
-                if days_forward <= 0:
-                    raise ValueError("target_date must be after obs_date")
-
-            expiry = find_nearest_expiry_friday(observation, days_forward)
-            source_log: list[str] = []
-            quotes_df, spot = _get_chain_and_spot_single(
-                ticker_upper, observation, expiry, source_log,
-            )
-
-            logger.info(
-                "predict (single): %s on %s, expiry=%s, spot=%.2f, source=%s",
-                ticker_upper, observation, expiry, spot, source_log[0],
-            )
-
-            result = predict_price(
-                quotes=quotes_df, spot=spot, days_forward=days_forward,
-                risk_free_rate=risk_free_rate, solver=solver,
-                bspline=bspline, kernel_smooth=kernel_smooth,
-            )
-
-            target_actual = observation + timedelta(days=days_forward)
-            meta = {
-                "ticker": ticker_upper,
-                "obs_date": observation.isoformat(),
-                "obs_date_from": observation.isoformat(),
-                "obs_date_to": observation.isoformat(),
-                "target_date": target_actual.isoformat(),
-                "days_forward": days_forward,
-                "days_averaged": 1,
-                "spot": spot,
-                "expiry_used": expiry.isoformat(),
-                "data_source": source_log[0] if source_log else "unknown",
-            }
-
-        realized = _get_realized_price(ticker_upper, target_actual)
-        if realized is not None:
-            meta["realized_price"] = realized
-
-        return _build_response(result, meta)
-
-    except ValueError as e:
-        logger.error("predict failed (bad input): %s", e)
-        raise HTTPException(status_code=422, detail=str(e))
-    except Exception as e:
-        logger.error("predict failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        for event in _prediction_steps(**params):
+            if event.get("done"):
+                return event["result"]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception:
+        logger.exception("Prediction failed")
+        raise HTTPException(status_code=503, detail="Prediction data is unavailable")
 
 
 @app.get("/predict-stream")
@@ -311,129 +189,17 @@ async def predict_price_stream(
     bspline_dx: float = 0.1,
     kernel_smooth: bool = True,
 ):
-    """Run the prediction pipeline with SSE progress updates."""
+    params = locals()
 
-    async def generate() -> AsyncGenerator[str, None]:
+    async def generate():
         try:
-            ticker_upper = ticker.upper()
-            bspline = BSplineParams(k=bspline_k, smooth=bspline_smooth, dx=bspline_dx)
-
-            yield _sse({"stage": "Resolving dates", "progress": 0})
-
-            date_from = date.fromisoformat(obs_date_from) if obs_date_from else None
-            date_to = date.fromisoformat(obs_date_to) if obs_date_to else None
-            single_date = date.fromisoformat(obs_date) if obs_date else None
-            is_range = date_from is not None and date_to is not None and date_from != date_to
-
-            if is_range:
-                df_days = days_forward
-                if target_date:
-                    target = date.fromisoformat(target_date)
-                    df_days = (target - date_to).days
-                    if df_days <= 0:
-                        raise ValueError("target_date must be after obs_date_to")
-
-                expiry = find_nearest_expiry_friday(date_to, df_days)
-
-                yield _sse({"stage": f"Loading options data ({date_from} to {date_to})", "progress": 10})
-
-                chains_by_date, spot, db_expiry, source = _get_chains_range(
-                    ticker_upper, date_from, date_to, expiry,
-                )
-
-                logger.info(
-                    "predict-stream (range): %s %s-%s %d days, spot=%.2f, expiry=%s",
-                    ticker_upper, date_from, date_to, len(chains_by_date), spot, db_expiry,
-                )
-
-                result = None
-                for step in predict_price_averaged_with_progress(
-                    chains_by_date=chains_by_date, spot=spot, days_forward=df_days,
-                    expiry=db_expiry, risk_free_rate=risk_free_rate, solver=solver,
-                    bspline=bspline, kernel_smooth=kernel_smooth,
-                ):
-                    if isinstance(step, PipelineResult):
-                        result = step
-                    else:
-                        yield _sse({"stage": step[0], "progress": step[1]})
-
-                target_actual = date_to + timedelta(days=df_days)
-                meta = {
-                    "ticker": ticker_upper,
-                    "obs_date_from": date_from.isoformat(),
-                    "obs_date_to": date_to.isoformat(),
-                    "obs_date": date_to.isoformat(),
-                    "target_date": target_actual.isoformat(),
-                    "days_forward": df_days,
-                    "days_averaged": len(chains_by_date),
-                    "spot": spot,
-                    "expiry_used": db_expiry.isoformat(),
-                    "data_source": source,
-                }
-
-            else:
-                observation = single_date or date_from or date.today()
-                df_days = days_forward
-                if target_date:
-                    target = date.fromisoformat(target_date)
-                    df_days = (target - observation).days
-                    if df_days <= 0:
-                        raise ValueError("target_date must be after obs_date")
-
-                expiry = find_nearest_expiry_friday(observation, df_days)
-
-                yield _sse({"stage": "Loading options data", "progress": 10})
-
-                source_log: list[str] = []
-                quotes_df, spot = _get_chain_and_spot_single(
-                    ticker_upper, observation, expiry, source_log,
-                )
-
-                logger.info(
-                    "predict-stream (single): %s on %s, spot=%.2f, expiry=%s, source=%s",
-                    ticker_upper, observation, spot, expiry, source_log[0],
-                )
-
-                result = None
-                for step in predict_price_with_progress(
-                    quotes=quotes_df, spot=spot, days_forward=df_days,
-                    risk_free_rate=risk_free_rate, solver=solver,
-                    bspline=bspline, kernel_smooth=kernel_smooth,
-                ):
-                    if isinstance(step, PipelineResult):
-                        result = step
-                    else:
-                        yield _sse({"stage": step[0], "progress": step[1]})
-
-                target_actual = observation + timedelta(days=df_days)
-                meta = {
-                    "ticker": ticker_upper,
-                    "obs_date": observation.isoformat(),
-                    "obs_date_from": observation.isoformat(),
-                    "obs_date_to": observation.isoformat(),
-                    "target_date": target_actual.isoformat(),
-                    "days_forward": df_days,
-                    "days_averaged": 1,
-                    "spot": spot,
-                    "expiry_used": expiry.isoformat(),
-                    "data_source": source_log[0] if source_log else "unknown",
-                }
-
-            if target_actual <= date.today():
-                yield _sse({"stage": "Fetching realized price", "progress": 95})
-                realized = _get_realized_price(ticker_upper, target_actual)
-                if realized is not None:
-                    meta["realized_price"] = realized
-
-            yield _sse({
-                "done": True,
-                "progress": 100,
-                "result": _build_response(result, meta),
-            })
-
-        except Exception as e:
-            logger.error("predict-stream failed: %s", e)
-            yield _sse({"error": str(e)})
+            for event in _prediction_steps(**params):
+                yield _sse(event)
+        except ValueError as exc:
+            yield _sse({"error": str(exc)})
+        except Exception:
+            logger.exception("Prediction stream failed")
+            yield _sse({"error": "Prediction data is unavailable"})
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 

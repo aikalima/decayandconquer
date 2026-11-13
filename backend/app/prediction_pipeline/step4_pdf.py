@@ -21,6 +21,7 @@ def extract_pdf(
     spot: float,
     days_forward: int,
     risk_free_rate: float,
+    diagnostics: dict | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Breeden-Litzenberger PDF extraction.
 
@@ -43,13 +44,21 @@ def extract_pdf(
     d2C_dK2 = np.gradient(np.gradient(call_prices, strikes), strikes)
     pdf = np.exp(risk_free_rate * years) * d2C_dK2
 
-    # Enforce non-negativity (numerical noise can produce small negatives)
+    if not np.isfinite(pdf).all():
+        raise ValueError("The fitted distribution contains non-finite values")
+    negative_area = float(np.trapezoid(np.maximum(-pdf, 0), strikes))
+    positive_area = float(np.trapezoid(np.maximum(pdf, 0), strikes))
+    if diagnostics is not None:
+        diagnostics.update(negative_density_area=negative_area, positive_density_area=positive_area,
+                           clipped_negative_fraction=negative_area / positive_area if positive_area > 0 else 0)
+    # Retain normalization, but report the correction instead of hiding it.
     pdf = np.maximum(pdf, 0.0)
 
     # Normalise so the PDF integrates to 1
     area = np.trapezoid(pdf, strikes)
-    if area > 0:
-        pdf /= area
+    if area <= 0:
+        raise ValueError("The fitted distribution has no positive probability mass")
+    pdf /= area
 
     return strikes, pdf
 

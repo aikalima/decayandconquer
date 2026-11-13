@@ -14,7 +14,7 @@ Usage:
 from __future__ import annotations
 import logging
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import duckdb
@@ -483,11 +483,11 @@ def has_data(underlying: str, trade_date: str | date) -> bool:
     """Check if the DB has any options data for a ticker on a given date."""
     db = get_db()
     row = db.execute("""
-        SELECT COUNT(*) FROM options
+        SELECT 1 FROM options
         WHERE underlying = ? AND trade_date = ?
         LIMIT 1
     """, [underlying, str(trade_date)]).fetchone()
-    return row[0] > 0
+    return row is not None
 
 
 def get_stats() -> dict:
@@ -513,21 +513,33 @@ def query_daily_closes(underlying: str, days: int = 30) -> list[tuple[str, float
 
     Uses deep ITM call options (strike + close ≈ spot) to infer the
     underlying's daily price. Returns list of (date_str, price) tuples,
-    oldest first.
+    oldest first. Equal strikes use earliest expiry, then contract ticker, so
+    parallel scans cannot choose different closes. Try recent data first,
+    falling back to full history to preserve observations for sparse tickers.
     """
+    if days < 0:
+        raise ValueError("days must be non-negative")
+    if days == 0:
+        return []
     db = get_db()
+    latest = db.execute("SELECT MAX(trade_date) FROM options").fetchone()[0]
+    if latest is None:
+        return []
+    # Anchor to the dataset, not today: offline/stale datasets still work.
+    cutoff = latest - timedelta(days=max(30, days * 2))
     # For each trade_date, find the lowest-strike call and compute
     # intrinsic value: spot ≈ strike + call_close for deep ITM calls
-    rows = db.execute("""
+    sql = """
         WITH daily_spot AS (
             SELECT trade_date,
                    -- Deep ITM call: spot ≈ strike + call_price
                    MIN(strike) AS min_strike,
-                   FIRST(close ORDER BY strike) AS min_strike_price
+                   FIRST(close ORDER BY strike, expiry, ticker) AS min_strike_price
             FROM options
             WHERE underlying = ?
               AND contract_type = 'C'
               AND close > 0
+              {date_filter}
             GROUP BY trade_date
             ORDER BY trade_date DESC
             LIMIT ?
@@ -535,7 +547,12 @@ def query_daily_closes(underlying: str, days: int = 30) -> list[tuple[str, float
         SELECT trade_date, min_strike + min_strike_price AS spot
         FROM daily_spot
         ORDER BY trade_date
-    """, [underlying, days]).fetchall()
+    """
+    rows = db.execute(
+        sql.format(date_filter="AND trade_date >= ?"), [underlying, cutoff, days]
+    ).fetchall()
+    if len(rows) < days:
+        rows = db.execute(sql.format(date_filter=""), [underlying, days]).fetchall()
     return [(str(r[0]), float(r[1])) for r in rows]
 
 

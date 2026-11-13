@@ -130,10 +130,10 @@ def fetch_spot_price(
 ) -> float:
     """Get the closing stock price for a ticker on a given date.
 
-    Looks back up to 5 trading days if the exact date has no data
-    (weekend/holiday). Caches the result.
+    Requires the exact observation date. Never silently substitutes another day.
     """
-    cache_path = _spot_cache_path(ticker, on_date)
+    legacy = _spot_cache_path(ticker, on_date)
+    cache_path = legacy.with_name("dated_v2_" + legacy.name)
     if cache_path.exists():
         df = pd.read_csv(cache_path)
         return float(df.iloc[0]["close"])
@@ -142,9 +142,9 @@ def fetch_spot_price(
         client = get_client(api_key)
 
     # Look back up to 7 calendar days to find a trading day
-    from_date = on_date - timedelta(days=7)
+    from_date = on_date
     time.sleep(rate_limit_sleep)
-    bars = list(client.list_aggs(ticker, 1, "day", str(from_date), str(on_date), limit=10))
+    bars = list(client.list_aggs(ticker, 1, "day", str(from_date), str(on_date), adjusted=False, sort="asc", limit=10))
 
     if not bars:
         raise ValueError(f"No price data for {ticker} near {on_date}")
@@ -253,14 +253,8 @@ def _fetch_chain_per_contract(
         try:
             time.sleep(rate_limit_sleep)
             bars = list(client.list_aggs(
-                occ, 1, "day", str(on_date), str(on_date), limit=1,
+                occ, 1, "day", str(on_date), str(on_date), adjusted=False, limit=1,
             ))
-            if not bars:
-                # Try previous trading day
-                from_date = on_date - timedelta(days=5)
-                bars = list(client.list_aggs(
-                    occ, 1, "day", str(from_date), str(on_date), limit=10,
-                ))
             if bars:
                 bar = bars[-1]
                 rows.append({
@@ -291,67 +285,22 @@ def fetch_options_chain(
     api_key: str | None = None,
     rate_limit_sleep: float = DEFAULT_RATE_LIMIT_SLEEP,
 ) -> pd.DataFrame:
-    """Fetch a historical call options chain.
-
-    Checks cache first. Tries the snapshot endpoint, falls back to
-    per-contract OHLC if that fails.
-
-    Returns:
-        DataFrame with columns [strike, last_price, bid, ask] sorted
-        by strike — ready for predict_price().
-    """
-    cache_path = _chain_cache_path(ticker, on_date, expiry_date)
+    """Fetch only the requested historical date and expiry, never a live snapshot."""
+    if on_date >= date.today() or expiry_date <= on_date:
+        raise ValueError("Historical chains require a completed observation day before expiry")
+    legacy = _chain_cache_path(ticker, on_date, expiry_date)
+    # Old cache entries may contain live snapshots or a substituted expiry.
+    cache_path = legacy.with_name("dated_v2_" + legacy.name)
     if cache_path.exists():
-        logger.info("Cache hit: %s", cache_path.name)
         return pd.read_csv(cache_path)
-
-    if client is None:
-        client = get_client(api_key)
-
-    # Build a list of expiry candidates to try (primary + adjacent months)
-    candidates = [expiry_date]
-    for offset in [-1, 1, -2, 2]:
-        y, m = expiry_date.year, expiry_date.month + offset
-        if m < 1:
-            m += 12
-            y -= 1
-        elif m > 12:
-            m -= 12
-            y += 1
-        alt = _third_friday(y, m)
-        if alt >= on_date and alt not in candidates:
-            candidates.append(alt)
-
+    client = client or get_client(api_key)
     if spot is None:
         spot = fetch_spot_price(ticker, on_date, client, rate_limit_sleep=rate_limit_sleep)
-
-    for exp in candidates:
-        # Try snapshot first (fast)
-        df = _try_snapshot_chain(client, ticker, exp, rate_limit_sleep)
-
-        # Fallback to per-contract OHLC
-        if df is None:
-            try:
-                df = _fetch_chain_per_contract(
-                    client, ticker, on_date, exp, spot, rate_limit_sleep,
-                )
-            except ValueError:
-                logger.info("No data for %s exp %s, trying next expiry", ticker, exp)
-                continue
-
-        if df is not None and len(df) >= 5:
-            if exp != expiry_date:
-                logger.info("Using alternative expiry %s (requested %s)", exp, expiry_date)
-            # Cache under the original requested expiry for consistency
-            df.to_csv(cache_path, index=False)
-            logger.info("Cached chain -> %s (%d rows)", cache_path.name, len(df))
-            return df
-
-    raise ValueError(
-        f"No options data found for {ticker} on {on_date} near expiry {expiry_date}. "
-        f"Tried: {[str(c) for c in candidates]}"
-    )
-
+    frame = _fetch_chain_per_contract(client, ticker, on_date, expiry_date, spot, rate_limit_sleep)
+    if len(frame) < 5:
+        raise ValueError("Fewer than five contracts on the exact observation date and expiry")
+    frame.to_csv(cache_path, index=False)
+    return frame
 
 # ---------------------------------------------------------------------------
 # Screener helpers (live snapshot with full fields)

@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 from datetime import date
 
-from backtest import score_prediction
+from programs.backtest import score_prediction
 from app.data.fetcher import find_nearest_expiry_friday
 
 DATA_DIR = Path(__file__).parent.parent / "app" / "data"
@@ -105,9 +105,9 @@ class TestExpiryFriday:
         assert result.weekday() == 4
 
     def test_90_day_horizon(self):
-        # 2025-06-01 + 90d = Aug 30 -> nearest 3rd Friday = Aug 15 or Sep 19
+        # 2025-06-01 + 90d = Aug 30 -> first monthly expiry at/after target.
         result = find_nearest_expiry_friday(date(2025, 6, 1), 90)
-        assert result == date(2025, 8, 15)
+        assert result == date(2025, 9, 19)
 
     def test_result_on_or_after_obs(self):
         # Expiry should never be before the observation date

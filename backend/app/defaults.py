@@ -106,6 +106,7 @@ def build_app_defaults(config_path: Path | None = None) -> dict[str, Any]:
     target_index = max(0, min(target_index, len(theta_expiries) - 1))
     target_expiry = date.fromisoformat(theta_expiries[target_index]["expiry"])
     obs_from = _month_start(add_months(latest_data_date, -window_months))
+    obs_from = max(obs_from, earliest_data_date)
 
     timeline_cfg = config.get("timeline", {})
     max_timeline = add_months(

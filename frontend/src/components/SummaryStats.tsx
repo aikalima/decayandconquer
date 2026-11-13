@@ -86,7 +86,7 @@ export default function SummaryStats({ data, meta }: Props) {
   const hasRealized = meta.realized_price != null;
   const cdfPct = hasRealized ? interpCdfAt(meta.realized_price!, prices, cdf) : null;
   const badge = cdfPct != null ? getAccuracyBadge(cdfPct) : null;
-  const isPrediction = !hasRealized;
+  const isPrediction = meta.mode === "forecast";
 
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 18, display: "flex", flexDirection: "column", gap: 16, boxShadow: "var(--shadow-soft)" }}>
@@ -123,11 +123,12 @@ export default function SummaryStats({ data, meta }: Props) {
             )}
           </div>
           <div style={{ fontSize: 13, color: "var(--text-soft)", lineHeight: 1.65 }}>
-            {isPrediction ? (
+            {!hasRealized ? (
               <>
                 Given option prices from {meta.obs_date_from} to {meta.obs_date_to}, the
-                market predicts {meta.ticker} around <strong style={{ color: "var(--brand-text)" }}>${median.toFixed(0)}</strong> by {meta.target_date}.
-                {" "}The current price is <strong style={{ color: "var(--text)" }}>${meta.spot.toFixed(2)}</strong>.
+                implied median for {meta.ticker} is <strong style={{ color: "var(--brand-text)" }}>${median.toFixed(0)}</strong> at {meta.target_date}.
+                {" "}The observation-date price is <strong style={{ color: "var(--text)" }}>${meta.spot.toFixed(2)}</strong>.
+                {!isPrediction && " Actual target-date close unavailable; not scored."}
               </>
             ) : (
               <>

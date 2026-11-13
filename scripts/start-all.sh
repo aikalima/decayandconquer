@@ -32,6 +32,12 @@ while [ "$#" -gt 0 ]; do
     shift
 done
 
+if [ "$WITH_MCP" = true ] && [ -f "$ROOT_DIR/.env" ]; then
+    set -a
+    source "$ROOT_DIR/.env"
+    set +a
+fi
+
 cleanup() {
     if [ -n "$BACKEND_PID" ]; then
         kill "$BACKEND_PID" 2>/dev/null
