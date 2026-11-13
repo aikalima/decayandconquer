@@ -82,6 +82,10 @@ fi
 
 cd "$APP_DIR"
 
+# Share the refresh lock so deployment cannot restart the API during DB writes.
+exec 200>/tmp/decay-cron.lock
+flock -n 200 || { echo "ERROR: A refresh or deployment is running; try again after it finishes." >&2; exit 1; }
+
 echo ""
 echo "--- Git update ---"
 git fetch origin "$BRANCH"
@@ -96,6 +100,17 @@ REMOTE_COMMIT="$(git rev-parse HEAD)"
 if [[ "$REMOTE_COMMIT" != "$LOCAL_COMMIT" ]]; then
   echo "WARNING: VM is deploying commit $REMOTE_COMMIT, local HEAD is $LOCAL_COMMIT."
   echo "         Push your local branch first if that is not expected."
+fi
+
+echo ""
+echo "--- Daily refresh script ---"
+if ! cmp -s terraform/scripts/run-daily-jobs.sh scripts/run-daily-jobs.sh; then
+  if [[ -f scripts/run-daily-jobs.sh ]]; then
+    BACKUP_DIR="$HOME/deploy-backups/$(date -u +%Y%m%dT%H%M%SZ)"
+    mkdir -p "$BACKUP_DIR"
+    cp -p scripts/run-daily-jobs.sh "$BACKUP_DIR/run-daily-jobs.sh"
+  fi
+  install -m 755 terraform/scripts/run-daily-jobs.sh scripts/run-daily-jobs.sh
 fi
 
 echo ""

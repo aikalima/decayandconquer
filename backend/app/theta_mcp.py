@@ -11,6 +11,7 @@ import logging
 from datetime import date, datetime
 from math import exp
 from typing import Literal
+from app.theta_quality import assess_row, scan_response, timestamp
 
 from mcp.server import MCPServer
 
@@ -51,6 +52,7 @@ def _configured_expiries() -> list[dict]:
 def _scan_public(scan: dict | None) -> dict | None:
     if not scan:
         return None
+    scanned = timestamp(scan.get("created_at"))
     return {
         "scan_id": scan.get("scan_id"),
         "expiry": scan.get("expiry"),
@@ -59,7 +61,7 @@ def _scan_public(scan: dict | None) -> dict | None:
         "tickers_scanned": scan.get("tickers_scanned"),
         "tickers_failed": scan.get("tickers_failed"),
         "scan_time_seconds": scan.get("scan_time_seconds"),
-        "scanned_at": scan.get("created_at", ""),
+        "scanned_at": scanned.isoformat() if scanned else None,
     }
 
 
@@ -95,7 +97,7 @@ def _sort_rows(rows: list[dict], category: Category) -> list[dict]:
     }
     key = sort_keys[category]
     fallback = fallback_keys[category]
-    return sorted(rows, key=lambda row: row.get(key) or row.get(fallback, 0) or 0, reverse=True)
+    return sorted(rows, key=lambda row: row.get(key) if row.get(key) is not None else (row.get(fallback) or 0), reverse=True)
 
 
 def _round_float(value: object, digits: int = 4) -> object:
@@ -218,6 +220,7 @@ def _quality_diagnostics(row: dict, scan: dict | None = None) -> dict:
 
 
 def _public_row(row: dict, scan: dict | None = None, include_diagnostics: bool = True) -> dict:
+    row = row if "quality" in row else assess_row(row, scan)
     fields = [
         "ticker",
         "spot",
@@ -257,10 +260,15 @@ def _public_row(row: dict, scan: dict | None = None, include_diagnostics: bool =
         "put_rank_score",
         "rank_score",
         "quality_warnings",
+        "spot_source", "spot_date", "hv_source", "hv_start_date", "hv_end_date",
+        "hv_observations", "hv_days", "call_iv_source", "put_iv_source", "quality",
     ]
     output = {field: _round_float(row.get(field)) for field in fields}
     if include_diagnostics:
         output["diagnostics"] = _quality_diagnostics(row, scan)
+        output["diagnostics"]["warnings"] = list(dict.fromkeys([
+            *output["diagnostics"]["warnings"], *(flag["message"] for flag in row["quality"]["flags"]),
+        ]))
     return output
 
 
@@ -273,7 +281,7 @@ def _interpret_row(row: dict) -> str:
     warnings = diagnostics.get("warnings") or []
     caveat = f" Key caveat: {warnings[0]}" if warnings else ""
     return (
-        f"{row.get('ticker')} has an average IV/HV premium of {avg:.2f}x, "
+        f"{row.get('ticker')} has average volatility richness (IV/HV) of {avg:.2f}x, not a dollar premium, "
         f"with the richer side currently in {side}. Higher values can indicate "
         "option premium priced above recent realized movement, but scan freshness, "
         "earnings, liquidity, spreads, dividends, and position sizing still matter."
@@ -330,7 +338,8 @@ def list_theta_expiries(include_configured: bool = True) -> dict:
 @mcp.tool(
     description=(
         "Return ranked Theta Plays rows for a saved scan. category can be "
-        "highest_premium, expensive_calls, or expensive_puts."
+        "highest_premium, expensive_calls, or expensive_puts. Defaults to rows passing data checks; "
+        "include_flagged=true includes excluded rows for inspection. IV/HV is volatility richness, not dollars."
     )
 )
 def get_theta_plays(
@@ -338,6 +347,7 @@ def get_theta_plays(
     category: Category = "highest_premium",
     limit: int = 10,
     include_diagnostics: bool = True,
+    include_flagged: bool = False,
 ) -> dict:
     """Get ranked Theta Plays for an expiry."""
     limit = max(1, min(int(limit), 100))
@@ -348,12 +358,16 @@ def get_theta_plays(
             "expiry": expiry,
         }
 
-    rows = _sort_rows(get_theta_results(scan["scan_id"]), category)[:limit]
+    response = scan_response(get_theta_results(scan["scan_id"]), scan, include_flagged=include_flagged)
+    rows = response[category][:limit]
     return {
         "category": category,
         "limit": limit,
         "scan": _scan_public(scan),
         "rows": [_public_row(row, scan, include_diagnostics) for row in rows],
+        "quality_counts": response["quality_counts"][category],
+        "quality_policy": response["quality_policy"],
+        "include_flagged": include_flagged,
     }
 
 

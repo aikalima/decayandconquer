@@ -330,6 +330,7 @@ def fetch_snapshot_for_screener(
                 "expiration_date.gte": str(expiry_date),
                 "expiration_date.lte": str(expiry_date),
                 "contract_type": contract_type,
+                "limit": 250,
             },
         ):
             strike = getattr(o.details, "strike_price", None) if hasattr(o, "details") else None

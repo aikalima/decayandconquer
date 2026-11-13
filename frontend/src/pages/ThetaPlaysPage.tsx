@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import { fetchAppDefaults, fetchThetaPlays, fetchThetaExpiries } from "../api/client";
 import type { ThetaPlayRow, ThetaPlaysResponse, ThetaExpiry } from "../api/client";
+import ThetaCandidateDetail from "../components/ThetaCandidateDetail";
 
 type Tab = "highest_premium" | "expensive_calls" | "expensive_puts";
 
@@ -14,9 +15,9 @@ interface HeaderTooltipState {
 }
 
 const TABS: { key: Tab; label: string; lead: string; description: string }[] = [
-  { key: "highest_premium", label: "Highest Premium", lead: "Best candidates for iron condors.", description: "Options with the highest IV/HV ratio overall." },
-  { key: "expensive_calls", label: "Expensive Calls", lead: "Best calls to sell.", description: "Priced expecting the underlying to move up more than it historically has." },
-  { key: "expensive_puts", label: "Expensive Puts", lead: "Best puts to sell.", description: "Priced expecting the underlying to move down more than it historically has." },
+  { key: "highest_premium", label: "Overall Richness", lead: "Call and put volatility richness.", description: "Average IV/HV, ranked with data-quality checks." },
+  { key: "expensive_calls", label: "Rich Calls", lead: "Call-side research candidates.", description: "Call IV relative to realized volatility, not a directional forecast." },
+  { key: "expensive_puts", label: "Rich Puts", lead: "Put-side research candidates.", description: "Put IV relative to realized volatility, not a directional forecast." },
 ];
 
 function thetaExpiryOptions(configured: ThetaExpiry[], available: ThetaExpiry[]): ThetaExpiry[] {
@@ -59,6 +60,8 @@ export default function ThetaPlaysPage() {
   const [sortAsc, setSortAsc] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [showExplainer, setShowExplainer] = useState(false);
+  const [includeFlagged, setIncludeFlagged] = useState(false);
+  const [selectedRow, setSelectedRow] = useState<ThetaPlayRow | null>(null);
   const [headerTooltip, setHeaderTooltip] = useState<HeaderTooltipState | null>(null);
   const [nowMs] = useState(() => Date.now());
 
@@ -91,16 +94,21 @@ export default function ThetaPlaysPage() {
   // Load results when selected expiry changes
   useEffect(() => {
     if (!selectedExpiry) return;
-    fetchThetaPlays(selectedExpiry).then((res) => {
+    let cancelled = false;
+    fetchThetaPlays(selectedExpiry, includeFlagged).then((res) => {
+      if (cancelled) return;
       setResults(res);
       setLoading(false);
     });
-  }, [selectedExpiry]);
+    return () => { cancelled = true; };
+  }, [selectedExpiry, includeFlagged]);
 
   const rows = results ? results[activeTab] : [];
   const activeTabInfo = TABS.find((tab) => tab.key === activeTab) ?? TABS[0];
 
   const sorted = [...rows].sort((a, b) => {
+    if (sortCol === "ticker") return (sortAsc ? 1 : -1) * a.ticker.localeCompare(b.ticker);
+    if (sortCol === "quality_score") return (sortAsc ? 1 : -1) * (Number(a.quality?.eligibility[activeTab].eligible) - Number(b.quality?.eligibility[activeTab].eligible));
     const av = numericSortValue(a, sortCol);
     const bv = numericSortValue(b, sortCol);
     return sortAsc ? av - bv : bv - av;
@@ -140,11 +148,11 @@ export default function ThetaPlaysPage() {
         maxWidth: "100%",
       }}>
         <h1 style={{ margin: "0 0 8px", fontSize: 30, lineHeight: 1.18, color: "var(--text)", letterSpacing: 0 }}>
-          Find options premium that is priced too rich
+          Find volatility richness worth investigating
         </h1>
         <p style={{ margin: 0, fontSize: 17, color: "var(--text-soft)", lineHeight: 1.6, maxWidth: 940 }}>
           Theta Plays ranks stocks where option-implied volatility is running hotter than recent realized moves,
-          highlighting contracts that may be attractive to sell for premium decay.
+          with freshness and liquidity checks that separate research candidates from unreliable inputs.
           {" "}
           <span
             onClick={() => setShowExplainer(true)}
@@ -162,8 +170,16 @@ export default function ThetaPlaysPage() {
               Scan Results
             </h2>
             <p className="dashboard-caption" style={{ margin: 0 }}>
-              Compare overpriced premium by expiration, then sort by IV/HV, call premium, put premium, beta, or recent move.
+              Volatility richness is an IV/HV ratio. Dollar columns show reference prices per share, not executable premiums.
             </p>
+
+            {results && <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16, fontSize: 14 }}>
+              <span>{results.quality_counts?.[activeTab].eligible ?? rows.length} of {results.quality_counts?.[activeTab].total ?? rows.length} candidates pass data checks</span>
+              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input type="checkbox" checked={includeFlagged} onChange={(e) => { setIncludeFlagged(e.target.checked); setLoading(true); setSelectedRow(null); }} />
+                Include flagged candidates
+              </label>
+            </div>}
           </div>
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, flex: "0 0 auto", minWidth: 230 }}>
@@ -272,6 +288,7 @@ export default function ThetaPlaysPage() {
                     <th
                       key={col.key}
                       onClick={() => handleSort(col.key)}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleSort(col.key); } }}
                       onMouseEnter={(e) => placeHeaderTooltip(col, e.clientX + 12, e.clientY + 14)}
                       onMouseMove={(e) => placeHeaderTooltip(col, e.clientX + 12, e.clientY + 14)}
                       onMouseLeave={() => setHeaderTooltip(null)}
@@ -290,7 +307,7 @@ export default function ThetaPlaysPage() {
                         fontWeight: 800,
                         fontSize: 11,
                         textTransform: "uppercase",
-                        letterSpacing: 0.5,
+                        letterSpacing: 0,
                         whiteSpace: "nowrap",
                         userSelect: "none",
                       }}
@@ -315,7 +332,9 @@ export default function ThetaPlaysPage() {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {col.render(row)}
+                        {col.key === "ticker" ? <button className="theta-ticker" onClick={() => setSelectedRow(row)} aria-label={`Review ${row.ticker} candidate`}>{row.ticker}</button>
+                          : col.key === "quality_score" ? <span style={{ color: row.quality?.eligibility[activeTab].eligible ? "var(--text-soft)" : "var(--risk)" }}>{row.quality?.eligibility[activeTab].eligible ? "Passes checks" : "Flagged"}</span>
+                          : col.render(row)}
                       </td>
                     ))}
                   </tr>
@@ -323,7 +342,7 @@ export default function ThetaPlaysPage() {
                 {sorted.length === 0 && (
                   <tr>
                     <td colSpan={COLUMNS.length} style={{ padding: 20, textAlign: "center", color: "var(--muted)" }}>
-                      No results for this category.
+                      No candidates pass the current data checks. Include flagged candidates to inspect exclusions; rerun the scan to refresh missing provenance.
                     </td>
                   </tr>
                 )}
@@ -382,6 +401,7 @@ export default function ThetaPlaysPage() {
         )}
       </div>
       {showExplainer && <ThetaExplainerModal onClose={() => setShowExplainer(false)} />}
+      {selectedRow && <ThetaCandidateDetail row={selectedRow} category={activeTab} onClose={() => setSelectedRow(null)} />}
     </div>
   );
 }
@@ -447,15 +467,15 @@ function ThetaExplainerModal({ onClose }: { onClose: () => void }) {
           </ThetaSection>
 
           <ThetaSection title="How To Read It">
-            A premium ratio above 1.0 means options are priced for more movement than the stock recently showed.
+            A volatility richness ratio above 1.0 means implied volatility exceeds recent realized volatility.
             Higher ratios can be better candidates for selling premium, but they also deserve more scrutiny around
             earnings, news, liquidity, spreads, and position sizing.
           </ThetaSection>
 
           <ThetaSection title="The Tabs">
-            Highest Premium ranks the best overall IV/HV gaps. Expensive Calls highlights names where calls look
-            especially rich. Expensive Puts does the same for puts. The table also shows bid/ask quality, beta, and
-            recent price change so you can avoid blindly chasing the biggest ratio.
+            Overall Richness compares both sides. Rich Calls and Rich Puts focus on one side. Default rankings exclude
+            stale, unverifiable or unreliable inputs. Dated daily marks can qualify for research but are never labeled
+            executable quotes. Missing provenance on older scans requires a new scan, not a historical data purge.
           </ThetaSection>
         </div>
 
@@ -518,7 +538,7 @@ const COLUMNS: Column[] = [
   {
     key: "spot",
     label: "Spot",
-    tooltip: "The underlying stock price from the option data snapshot. It anchors which strikes are near the money and keeps the premium ratios in market context.",
+    tooltip: "Underlying reference price used to choose near-ATM strikes. Candidate details show whether this came from a dated stock close, a snapshot, or an unverified legacy source.",
     render: (r) => `$${r.spot.toFixed(0)}`,
   },
   {
@@ -537,14 +557,14 @@ const COLUMNS: Column[] = [
   },
   {
     key: "call_mid",
-    label: "Call $",
-    tooltip: "The selected call's mid price, computed from bid and ask when available. It approximates tradable premium and helps you avoid names where the premium looks rich but the dollars are too small.",
+    label: "Call ref. $",
+    tooltip: "Call reference price per share: a bid/ask midpoint, daily close or last trade. This is not an executable offer; inspect the source and timestamp in candidate details.",
     render: (r) => `$${r.call_mid.toFixed(2)}`,
   },
   {
     key: "put_mid",
-    label: "Put $",
-    tooltip: "The selected put's mid price, computed from bid and ask when available. It shows the put-side premium available and helps compare call-rich versus put-rich opportunities.",
+    label: "Put ref. $",
+    tooltip: "Put reference price per share: a bid/ask midpoint, daily close or last trade. This is not an executable offer; inspect the source and timestamp in candidate details.",
     render: (r) => `$${r.put_mid.toFixed(2)}`,
   },
   {
@@ -561,7 +581,7 @@ const COLUMNS: Column[] = [
   },
   {
     key: "avg_premium",
-    label: "Premium",
+    label: "IV/HV",
     tooltip: "The average IV/HV ratio across the selected call and put. Above 1.0 means options price a bigger move than recent history; rows are ranked by a quality-adjusted version of this signal.",
     render: (r) => `${r.avg_premium.toFixed(2)}x`,
     color: (r) => r.avg_premium >= 1.5 ? "var(--risk)" : r.avg_premium >= 1.0 ? "var(--text-soft)" : "var(--muted)",
@@ -569,22 +589,22 @@ const COLUMNS: Column[] = [
   },
   {
     key: "quality_score",
-    label: "Quality",
-    tooltip: "Quote and liquidity sanity score. It penalizes missing bid/ask quotes, wide spreads, low open interest, stale or synthetic prices, large IV skew, and parity gaps so stale-looking premium does not float to the top.",
+    label: "Data checks",
+    tooltip: "Eligibility for the active category. Checks cover age, source, liquidity, spreads, IV asymmetry and actual stock-price history. Passing is not a trade recommendation; open the ticker for exact reasons.",
     render: (r) => r.quality_score == null ? "n/a" : `${r.quality_score.toFixed(0)}`,
     color: (r) => (r.quality_score ?? 100) < 60 ? "var(--risk)" : "var(--muted)",
     bold: (r) => (r.quality_score ?? 100) < 60,
   },
   {
     key: "call_premium",
-    label: "Call Prem",
+    label: "Call IV/HV",
     tooltip: "The call-side IV/HV ratio. High values mean calls look especially rich versus realized movement, useful when looking for covered calls, call spreads, or the call side of an iron condor.",
     render: (r) => `${r.call_premium.toFixed(2)}x`,
     color: (r) => r.call_premium >= 1.5 ? "var(--risk)" : "var(--text-soft)",
   },
   {
     key: "put_premium",
-    label: "Put Prem",
+    label: "Put IV/HV",
     tooltip: "The put-side IV/HV ratio. High values mean puts look especially rich versus realized movement, useful when looking for cash-secured puts, put spreads, or the put side of an iron condor.",
     render: (r) => `${r.put_premium.toFixed(2)}x`,
     color: (r) => r.put_premium >= 1.5 ? "var(--risk)" : "var(--text-soft)",

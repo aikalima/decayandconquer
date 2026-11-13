@@ -21,7 +21,7 @@ set_read_only(True)
 from app.news import fetch_market_context
 from app.screener import scan_all, DEFAULT_TICKERS
 from app.defaults import build_app_defaults
-from app.data.db import get_latest_theta_scan, get_latest_theta_scan_by_expiry, get_theta_results, get_available_theta_expiries
+from app.data.db import get_latest_theta_scan, get_latest_theta_scan_by_expiry, get_theta_results, get_available_theta_expiries, get_theta_scan
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -230,7 +230,7 @@ async def market_context(
         return {"events": [], "disclaimer": "Failed to fetch market context."}
 
 
-def _try_theta_json_fallback():
+def _try_theta_json_fallback(expiry=None, include_flagged=False):
     """Check for JSON fallback file written when DB was locked."""
     import json as _json
     fallback = Path(__file__).parent / "data" / "theta_latest.json"
@@ -238,20 +238,20 @@ def _try_theta_json_fallback():
         return None
     try:
         data = _json.loads(fallback.read_text())
+        if expiry and data.get("expiry") != expiry:
+            return None
+        from app.theta_quality import scan_response, timestamp
         rows = data["results"]
-        by_avg = sorted(rows, key=lambda r: r.get("rank_score") or r.get("avg_premium", 0), reverse=True)
-        by_call = sorted(rows, key=lambda r: r.get("call_rank_score") or r.get("call_premium", 0), reverse=True)
-        by_put = sorted(rows, key=lambda r: r.get("put_rank_score") or r.get("put_premium", 0), reverse=True)
+        scanned = timestamp(data.get("scan_id"))
         return {
-            "highest_premium": by_avg,
-            "expensive_calls": by_call,
-            "expensive_puts": by_put,
+            **scan_response(rows, data, include_flagged=include_flagged),
             "tickers_scanned": data.get("tickers_scanned", len(rows)),
             "tickers_failed": [],
             "expiry": data.get("expiry", ""),
             "scan_time_seconds": data.get("scan_time_seconds", 0),
             "scan_id": data.get("scan_id", ""),
-            "scanned_at": data.get("scan_id", ""),
+            "scanned_at": scanned.isoformat() if scanned else None,
+            "hv_days": data.get("hv_days"),
         }
     except Exception:
         return None
@@ -264,17 +264,21 @@ async def theta_expiries():
 
 
 @app.get("/theta-plays")
-async def theta_plays(scan_id: Optional[str] = None, days_forward: Optional[int] = None, expiry: Optional[str] = None):
+async def theta_plays(scan_id: Optional[str] = None, days_forward: Optional[int] = None, expiry: Optional[str] = None, include_flagged: bool = False):
     """Serve pre-computed theta plays results from DuckDB or JSON fallback."""
-    if expiry:
+    if scan_id:
+        scan = get_theta_scan(scan_id)
+        if scan is None:
+            return {"error": f"No scan found for {scan_id}"}
+        if expiry and scan["expiry"] != expiry:
+            return {"error": "Requested scan does not match expiry"}
+    elif expiry:
         scan = get_latest_theta_scan_by_expiry(expiry)
-    elif scan_id:
-        scan = None
     else:
         scan = get_latest_theta_scan(days_forward)
 
     if scan is None and scan_id is None:
-        fallback = _try_theta_json_fallback()
+        fallback = _try_theta_json_fallback(expiry, include_flagged)
         if fallback:
             return fallback
         return {"error": "No scans available. Run run_theta_scan.py first."}
@@ -287,20 +291,17 @@ async def theta_plays(scan_id: Optional[str] = None, days_forward: Optional[int]
     if not rows:
         return {"error": f"No results for scan {sid}"}
 
-    by_avg = sorted(rows, key=lambda r: r.get("rank_score") or r.get("avg_premium", 0), reverse=True)
-    by_call = sorted(rows, key=lambda r: r.get("call_rank_score") or r.get("call_premium", 0), reverse=True)
-    by_put = sorted(rows, key=lambda r: r.get("put_rank_score") or r.get("put_premium", 0), reverse=True)
+    from app.theta_quality import scan_response, timestamp
+    scanned = timestamp(scan.get("created_at"))
 
     return {
-        "highest_premium": by_avg,
-        "expensive_calls": by_call,
-        "expensive_puts": by_put,
+        **scan_response(rows, scan, include_flagged=include_flagged),
         "tickers_scanned": scan.get("tickers_scanned", len(rows)),
         "tickers_failed": [],
         "expiry": scan.get("expiry", ""),
         "scan_time_seconds": scan.get("scan_time_seconds", 0),
         "scan_id": sid,
-        "scanned_at": scan.get("created_at", ""),
+        "scanned_at": scanned.isoformat() if scanned else None,
         "hv_days": scan.get("hv_days", 20),
     }
 

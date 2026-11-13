@@ -54,7 +54,7 @@ def get_data_health(today: date | None = None) -> dict:
                 parsed = datetime.fromisoformat(str(stamp).replace("Z", "+00:00")) if stamp else None
                 if parsed and parsed.tzinfo is None:
                     parsed = parsed.replace(tzinfo=timezone.utc)
-                result["theta_scans"].append({**row, "last_scanned": str(stamp) if stamp else None,
+                result["theta_scans"].append({**row, "last_scanned": parsed.isoformat() if parsed else None,
                     "age_hours": round(max(0, (now-parsed).total_seconds()/3600), 1) if parsed else None,
                     "expired": str(row["expiry"]) < today.isoformat()})
         except Exception:

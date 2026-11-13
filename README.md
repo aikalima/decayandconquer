@@ -142,6 +142,41 @@ job state is reported as unknown, never inferred from a scan timestamp.
 The endpoint does not download or alter data. Options history still needs the
 normal flat-file refresh; fetching current stock prices does not refresh it.
 
+### Theta Candidate Quality
+
+Theta Plays uses the same read-time eligibility checks in the HTTP API and MCP.
+Default rankings exclude unknown/stale inputs (over four calendar days), expired
+or mismatched expiries, unverified underlying/HV sources, insufficient HV history,
+HV at or below 1%, invalid IV/prices, IV asymmetry of at least 2x, unknown/low open
+interest (below 10), zero/missing volume, and invalid or at least 20%-wide quotes.
+These are conservative research heuristics, not calibrated measures of trade quality.
+Daily marks with dates and liquidity can qualify, but are labeled as non-executable.
+Scores retain quality penalties; zero scores never fall back to raw IV/HV ratios.
+
+Use **Include flagged candidates** to inspect excluded rows. The ticker opens
+source dates, per-leg inputs, HV coverage, ranking reasons and model limitations.
+The API accepts `include_flagged=true`; MCP `get_theta_plays` accepts the same
+boolean and returns category-specific eligibility counts. IV/HV means volatility
+richness, not a dollar premium or directional prediction.
+
+New scans use actual split-adjusted stock closes for HV and date-aligned beta,
+with N+1 closes for N daily returns. The underlying reference is a dated raw stock
+close or a newer timestamped snapshot. Failed IV is not copied from the other leg.
+Old scans remain inspectable but cannot pass provenance checks retroactively.
+No options-history purge is required: rerun the normal theta scan job to populate
+the new fields. Schema columns are added on the next writable connection; read-only
+servers can inspect older schemas without a migration. Dividend/earnings checks
+and American-option modelling remain unverified, disclosed limitations.
+
+Batch scans run the longest HV lookback first so shorter expiries reuse the same
+fresh stock-history cache. Stock HTTP 429 responses receive up to three 65-second
+backoffs in batch scans; interactive predictions do not inherit those long waits.
+Snapshot requests use 250 contracts per page to reduce pagination overhead.
+When available on the existing subscription, a grouped daily stock request warms
+raw closing prices for the entire scan universe; unsupported bulk access falls
+back to individual dated requests. The top-ticker universe is anchored to the
+latest options date in DuckDB, with a warning when that volume history is stale.
+
 ## CLI Tools
 
 All CLI tools live in `backend/programs/` and run from the `backend/` directory with the virtualenv activated. API keys are loaded from `.env` in the project root.

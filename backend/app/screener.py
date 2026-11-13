@@ -8,18 +8,18 @@ covered calls, cash-secured puts).
 from __future__ import annotations
 import logging
 from dataclasses import dataclass, asdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from math import exp
 import numpy as np
 
 from app.data.fetcher import (
     get_client,
     fetch_snapshot_for_screener,
-    fetch_daily_bars,
     find_nearest_expiry_friday,
     _third_friday,
 )
-from app.data.db import query_daily_closes
+from app.data.underlying import daily_closes, prefetch_stock_closes
+from app.theta_quality import scan_response
 from app.prediction_pipeline.black_scholes import call_value
 from scipy.optimize import brentq
 
@@ -79,15 +79,26 @@ class ScreenerRow:
     put_rank_score: float
     rank_score: float
     quality_warnings: str
+    spot_source: str
+    spot_date: str
+    hv_source: str
+    hv_start_date: str
+    hv_end_date: str
+    hv_observations: int
+    hv_days: int
+    call_iv_source: str
+    put_iv_source: str
 
 
 def compute_hv(closes: list[float], days: int = 20) -> float:
     """Annualized historical volatility from daily closes."""
-    if len(closes) < max(days, 5):
+    if days < 2 or len(closes) < days + 1:
         return 0.0
-    prices = np.array(closes[-days:])
+    prices = np.array(closes[-(days + 1):])
+    if not np.all(np.isfinite(prices)) or np.any(prices <= 0):
+        return 0.0
     log_returns = np.log(prices[1:] / prices[:-1])
-    return float(np.std(log_returns) * np.sqrt(252))
+    return float(np.std(log_returns, ddof=1) * np.sqrt(252))
 
 
 def compute_beta(stock_closes: list[float], spy_closes: list[float], days: int = 20) -> float:
@@ -104,13 +115,13 @@ def compute_beta(stock_closes: list[float], spy_closes: list[float], days: int =
     var_m = np.var(mr)
     if var_m == 0:
         return 0.0
-    return float(np.cov(sr, mr)[0, 1] / var_m)
+    return float(np.cov(sr, mr, ddof=0)[0, 1] / var_m)
 
 
 def compute_efficiency(bid: float, ask: float) -> float:
     """Bid-ask spread quality (0-100, higher = tighter)."""
     mid = (bid + ask) / 2
-    if mid <= 0 or bid <= 0 or ask <= 0:
+    if mid <= 0 or bid <= 0 or ask <= bid:
         return 0.0
     return max(0.0, (1.0 - (ask - bid) / mid)) * 100
 
@@ -261,30 +272,34 @@ def _find_atm(contracts: list[dict], spot: float) -> dict | None:
     return min(priced, key=lambda c: abs(c["strike"] - spot))
 
 
+def stock_history(client, ticker: str, days: int) -> dict[str, float]:
+    end = date.today() - timedelta(days=1)
+    return daily_closes(ticker, end - timedelta(days=days * 2 + 14), end, adjusted=True, client=client, rate_limit_retries=3)
+
+
 def scan_ticker(
     client,
     ticker: str,
-    spy_closes: list[float],
+    spy_closes: dict[str, float],
     expiry_date: date,
     hv_days: int = 20,
     candidate_expiries: list[date] | None = None,
 ) -> ScreenerRow | None:
     """Scan a single ticker for theta play metrics."""
     try:
-        # Get daily prices from DuckDB (fast, no API calls)
-        # Fall back to API if DB has no data for this ticker
-        db_prices = query_daily_closes(ticker, days=max(hv_days + 5, 30))
-        if len(db_prices) >= 5:
-            closes = [p for _, p in db_prices]
-        else:
-            logger.info("No DB price data for %s, trying API", ticker)
-            closes = fetch_daily_bars(client, ticker, days=max(hv_days + 5, 30))
+        history = stock_history(client, ticker, max(hv_days + 1, 30))
+        dates = sorted(history)
+        closes = [history[day] for day in dates]
 
         if len(closes) < 5:
             logger.warning("Insufficient price history for %s", ticker)
             return None
 
-        spot = closes[-1]
+        spot_date = dates[-1]
+        raw = daily_closes(ticker, date.fromisoformat(spot_date), date.fromisoformat(spot_date), client=client, rate_limit_retries=3)
+        spot = raw.get(spot_date, 0)
+        spot_source = "massive_daily_unadjusted"
+        underlying_updated_ns = None
         if spot <= 0:
             logger.warning("No spot price for %s", ticker)
             return None
@@ -306,6 +321,16 @@ def scan_ticker(
             logger.warning("No snapshot data for %s", ticker)
             return None
 
+        snapshots = [c for c in calls + puts if c.get("spot", 0) > 0 and c.get("underlying_updated_ns")]
+        if snapshots:
+            latest = max(snapshots, key=lambda c: c["underlying_updated_ns"])
+            stamp = datetime.fromtimestamp(latest["underlying_updated_ns"] / 1e9, timezone.utc)
+            if stamp.date().isoformat() >= spot_date and stamp <= datetime.now(timezone.utc):
+                spot = latest["spot"]
+                spot_source = "massive_snapshot"
+                underlying_updated_ns = latest["underlying_updated_ns"]
+                spot_date = stamp.date().isoformat()
+
         # Find ATM contracts
         atm_call = _find_atm(calls, spot)
         atm_put = _find_atm(puts, spot)
@@ -315,10 +340,8 @@ def scan_ticker(
 
         # Compute HV + beta
         hv = compute_hv(closes, hv_days)
-        if hv <= 0.01:
-            hv = 0.01
-
-        beta = compute_beta(closes, spy_closes, hv_days)
+        common_dates = sorted(set(history) & set(spy_closes))
+        beta = compute_beta([history[d] for d in common_dates], [spy_closes[d] for d in common_dates], hv_days + 1)
 
         # 5-day % change
         if len(closes) >= 6:
@@ -344,26 +367,22 @@ def scan_ticker(
         t = max(days_to_expiry, 1) / 365
 
         call_iv = atm_call.get("iv", 0.0) or 0.0
+        call_iv_source = "massive_snapshot" if call_iv > 0 else "european_no_dividend"
         if call_iv <= 0 and call_price > 0:
-            call_iv = _solve_iv(call_price, spot, atm_call["strike"], t)
+            call_iv = _solve_iv(call_mid, spot, atm_call["strike"], t)
 
         put_iv = atm_put.get("iv", 0.0) or 0.0
+        put_iv_source = "massive_snapshot" if put_iv > 0 else "european_no_dividend"
         if put_iv <= 0 and put_price > 0:
             # Use put-call parity approximation: put IV ~ call IV at same strike
             # Or solve using call_value on the synthetic call price
-            synthetic_call = put_price + spot - atm_put["strike"] * np.exp(-0.04 * t)
+            synthetic_call = put_mid + spot - atm_put["strike"] * np.exp(-0.04 * t)
             if synthetic_call > 0:
                 put_iv = _solve_iv(synthetic_call, spot, atm_put["strike"], t)
 
         if call_iv <= 0 and put_iv <= 0:
             logger.warning("Could not determine IV for %s", ticker)
             return None
-
-        # If one side failed, use the other
-        if call_iv <= 0:
-            call_iv = put_iv
-        if put_iv <= 0:
-            put_iv = call_iv
 
         call_quality, call_warnings = _side_quality(atm_call, "call", call_bid, call_ask, call_mid)
         put_quality, put_warnings = _side_quality(atm_put, "put", put_bid, put_ask, put_mid)
@@ -423,7 +442,7 @@ def scan_ticker(
             put_day_updated_ns=atm_put.get("day_updated_ns"),
             call_trade_updated_ns=atm_call.get("trade_updated_ns"),
             put_trade_updated_ns=atm_put.get("trade_updated_ns"),
-            underlying_updated_ns=atm_call.get("underlying_updated_ns") or atm_put.get("underlying_updated_ns"),
+            underlying_updated_ns=underlying_updated_ns,
             call_quality_score=round(call_quality, 1),
             put_quality_score=round(put_quality, 1),
             quality_score=round(quality, 1),
@@ -431,6 +450,11 @@ def scan_ticker(
             put_rank_score=round(put_premium * min(put_quality, quality) / 100, 2),
             rank_score=round(avg_premium * quality / 100, 2),
             quality_warnings="; ".join(dict.fromkeys(warnings)),
+            spot_source=spot_source, spot_date=spot_date,
+            hv_source="massive_daily_adjusted", hv_start_date=dates[-min(len(dates), hv_days + 1)],
+            hv_end_date=dates[-1], hv_observations=min(len(dates), hv_days + 1), hv_days=hv_days,
+            call_iv_source=call_iv_source if call_iv > 0 else "unavailable",
+            put_iv_source=put_iv_source if put_iv > 0 else "unavailable",
         )
 
     except Exception as e:
@@ -458,12 +482,9 @@ def scan_all(
     expiry_date = find_nearest_expiry_friday(obs_date, days_forward)
     candidate_expiries = _candidate_expiries(obs_date, days_forward)
 
-    # SPY bars for beta — try DuckDB first
-    spy_db = query_daily_closes("SPY", days=max(hv_days + 5, 30))
-    if len(spy_db) >= 5:
-        spy_closes = [p for _, p in spy_db]
-    else:
-        spy_closes = fetch_daily_bars(client, "SPY", days=max(hv_days + 5, 30))
+    prefetch_stock_closes(client, tickers, obs_date - timedelta(days=1))
+
+    spy_closes = stock_history(client, "SPY", max(hv_days + 1, 30))
 
     results: list[ScreenerRow] = []
     failed: list[str] = []
@@ -480,15 +501,8 @@ def scan_all(
 
         yield (stage, progress, row)
 
-    # Sort into three categories (top 10 each)
-    by_avg = sorted(results, key=lambda r: r.rank_score, reverse=True)[:10]
-    by_call = sorted(results, key=lambda r: r.call_rank_score, reverse=True)[:10]
-    by_put = sorted(results, key=lambda r: r.put_rank_score, reverse=True)[:10]
-
     yield {
-        "highest_premium": [asdict(r) for r in by_avg],
-        "expensive_calls": [asdict(r) for r in by_call],
-        "expensive_puts": [asdict(r) for r in by_put],
+        **scan_response([asdict(r) for r in results], {"created_at": datetime.now(timezone.utc).isoformat(), "expiry": str(expiry_date), "hv_days": hv_days}),
         "tickers_scanned": len(tickers),
         "tickers_failed": failed,
         "expiry": str(expiry_date),

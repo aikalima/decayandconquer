@@ -19,7 +19,7 @@ import subprocess
 import sys
 import time
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -92,7 +92,7 @@ def run_theta_scan(
     else:
         ticker_list = DEFAULT_TICKERS
 
-    scan_id = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    scan_id = datetime.now(timezone.utc).isoformat(timespec="seconds")
     print(f"Scan ID:      {scan_id}")
     print(f"Tickers:      {len(ticker_list)}")
     print(f"DTE:          {days_forward} days")
@@ -184,6 +184,8 @@ def run_theta_scans_from_config(config_path: Path, *, api_key: str | None = None
     scans = build_theta_scan_plan(config_path)
     if not scans:
         raise ValueError(f"{config_path}: no theta scans configured")
+    # Download the widest stock-history window first; shorter windows reuse it.
+    scans = sorted(scans, key=lambda scan: int(scan["hv_days"]), reverse=True)
 
     all_ok = True
 

@@ -76,6 +76,8 @@ _THETA_RESULT_COLUMNS = [
     "put_rank_score",
     "rank_score",
     "quality_warnings",
+    "spot_source", "spot_date", "hv_source", "hv_start_date", "hv_end_date",
+    "hv_observations", "hv_days", "call_iv_source", "put_iv_source",
 ]
 
 
@@ -218,6 +220,10 @@ def _ensure_schema(conn: duckdb.DuckDBPyConnection):
     """)
 
     for column, col_type in [
+        ("spot_source", "VARCHAR"), ("spot_date", "VARCHAR"),
+        ("hv_source", "VARCHAR"), ("hv_start_date", "VARCHAR"), ("hv_end_date", "VARCHAR"),
+        ("hv_observations", "INTEGER"), ("hv_days", "INTEGER"),
+        ("call_iv_source", "VARCHAR"), ("put_iv_source", "VARCHAR"),
         ("call_price_source", "VARCHAR"),
         ("put_price_source", "VARCHAR"),
         ("call_open_interest", "INTEGER"),
@@ -557,18 +563,27 @@ def query_daily_closes(underlying: str, days: int = 30) -> list[tuple[str, float
 
 
 def get_top_tickers_by_volume(limit: int = 500, lookback_days: int = 30) -> list[str]:
-    """Get the top N tickers by options trading volume over the last N days."""
+    """Rank volume over the latest available N calendar days, even in an old DB."""
+    if limit <= 0:
+        return []
+    if lookback_days <= 0:
+        raise ValueError("lookback_days must be positive")
     db = get_db()
+    latest = db.execute("SELECT MAX(trade_date) FROM options").fetchone()[0]
+    if latest is None:
+        return []
+    if (date.today() - latest).days > 4:
+        logger.warning("Ticker universe uses options volume ending %s; prices for the scan are fetched separately from Massive", latest)
     rows = db.execute("""
         SELECT underlying
         FROM options
-        WHERE trade_date >= CURRENT_DATE - ?
+        WHERE trade_date >= ?
           AND volume > 0
         GROUP BY underlying
         HAVING SUM(volume) > 100
-        ORDER BY SUM(volume) DESC
+        ORDER BY SUM(volume) DESC, underlying ASC
         LIMIT ?
-    """, [lookback_days, limit]).fetchall()
+    """, [latest - timedelta(days=lookback_days - 1), limit]).fetchall()
     return [r[0] for r in rows]
 
 
@@ -589,51 +604,24 @@ def save_theta_scan(
     db = get_db()
     db.execute("""
         INSERT OR REPLACE INTO theta_scans
-            (scan_id, days_forward, hv_days, expiry, tickers_scanned, tickers_failed, scan_time_seconds)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, [scan_id, days_forward, hv_days, expiry, tickers_scanned, tickers_failed, scan_time_seconds])
+            (scan_id, days_forward, hv_days, expiry, tickers_scanned, tickers_failed, scan_time_seconds, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, [scan_id, days_forward, hv_days, expiry, tickers_scanned, tickers_failed, scan_time_seconds,
+          datetime.now(timezone.utc).replace(tzinfo=None)])
 
 
 def save_theta_results(scan_id: str, rows: list[dict]) -> None:
-    """Bulk insert theta screener results for a scan."""
+    """Bulk insert theta screener results using the shared schema column list."""
     if not rows:
         return
     db = get_db()
-    for r in rows:
-        db.execute("""
-            INSERT OR REPLACE INTO theta_results
-                (scan_id, ticker, spot, expiry, call_strike, call_bid, call_ask, call_mid,
-                 call_iv, put_strike, put_bid, put_ask, put_mid, put_iv, hv_20,
-                 call_premium, put_premium, avg_premium, call_efficiency, put_efficiency,
-                 beta, pct_change_5d, call_price_source, put_price_source,
-                 call_open_interest, put_open_interest, call_volume, put_volume,
-                 call_bid_size, call_ask_size, put_bid_size, put_ask_size,
-                 call_quote_updated_ns, put_quote_updated_ns, call_day_updated_ns, put_day_updated_ns,
-                 call_trade_updated_ns, put_trade_updated_ns, underlying_updated_ns,
-                 call_quality_score, put_quality_score, quality_score,
-                 call_rank_score, put_rank_score, rank_score, quality_warnings)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?)
-        """, [
-            scan_id, r["ticker"], r["spot"], r["expiry"],
-            r["call_strike"], r["call_bid"], r["call_ask"], r["call_mid"], r["call_iv"],
-            r["put_strike"], r["put_bid"], r["put_ask"], r["put_mid"], r["put_iv"],
-            r["hv_20"], r["call_premium"], r["put_premium"], r["avg_premium"],
-            r["call_efficiency"], r["put_efficiency"], r["beta"], r["pct_change_5d"],
-            r.get("call_price_source"), r.get("put_price_source"),
-            r.get("call_open_interest"), r.get("put_open_interest"),
-            r.get("call_volume"), r.get("put_volume"),
-            r.get("call_bid_size"), r.get("call_ask_size"),
-            r.get("put_bid_size"), r.get("put_ask_size"),
-            r.get("call_quote_updated_ns"), r.get("put_quote_updated_ns"),
-            r.get("call_day_updated_ns"), r.get("put_day_updated_ns"),
-            r.get("call_trade_updated_ns"), r.get("put_trade_updated_ns"),
-            r.get("underlying_updated_ns"),
-            r.get("call_quality_score"), r.get("put_quality_score"), r.get("quality_score"),
-            r.get("call_rank_score"), r.get("put_rank_score"), r.get("rank_score"),
-            r.get("quality_warnings"),
-        ])
+    columns = ["scan_id", *_THETA_RESULT_COLUMNS]
+    placeholders = ", ".join("?" for _ in columns)
+    for row in rows:
+        db.execute(
+            f"INSERT OR REPLACE INTO theta_results ({', '.join(columns)}) VALUES ({placeholders})",
+            [scan_id, *(row.get(column) for column in _THETA_RESULT_COLUMNS)],
+        )
 
 
 def get_available_theta_expiries() -> list[dict]:
@@ -700,8 +688,22 @@ def get_latest_theta_scan(days_forward: int | None = None) -> dict | None:
     }
 
 
+def get_theta_scan(scan_id: str) -> dict | None:
+    """Resolve an explicit scan with its original timing and lookback metadata."""
+    cursor = get_db().execute("SELECT * FROM theta_scans WHERE scan_id = ?", [scan_id])
+    names = [col[0] for col in cursor.description]
+    row = cursor.fetchone()
+    if not row:
+        return None
+    result = dict(zip(names, row))
+    result["expiry"] = str(result["expiry"])
+    result["created_at"] = str(result["created_at"])
+    return result
+
+
 def get_theta_results(scan_id: str) -> list[dict]:
     """Get all theta results for a given scan."""
+    import pandas as pd
     db = get_db()
     existing = {
         row[1]
@@ -721,7 +723,7 @@ def get_theta_results(scan_id: str) -> list[dict]:
     # Convert any Timestamp/date columns to strings for JSON serialization
     if "expiry" in df.columns:
         df["expiry"] = df["expiry"].astype(str)
-    return df.to_dict(orient="records")
+    return df.astype(object).where(pd.notna(df), None).to_dict(orient="records")
 
 
 def close_db():

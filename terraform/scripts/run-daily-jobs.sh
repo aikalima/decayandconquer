@@ -22,6 +22,7 @@ set -a; source "$APP_DIR/.env"; set +a
 # 1. Stop API to release DuckDB lock for writes
 # ---------------------------------------------------------------
 echo "Stopping API..."
+trap 'sudo systemctl start decay-api' EXIT
 sudo systemctl stop decay-api
 
 # ---------------------------------------------------------------
@@ -46,6 +47,7 @@ $VENV programs/run_theta_scan.py --config config/app_defaults.json || {
 echo ""
 echo "Restarting API..."
 sudo systemctl start decay-api
+trap - EXIT
 
 echo ""
 echo "============================================"

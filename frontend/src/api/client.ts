@@ -245,6 +245,24 @@ export interface ThetaPlayRow {
   put_rank_score?: number;
   rank_score?: number;
   quality_warnings?: string;
+  spot_source?: string;
+  spot_date?: string;
+  hv_source?: string;
+  hv_start_date?: string;
+  hv_end_date?: string;
+  hv_observations?: number;
+  hv_days?: number;
+  call_iv_source?: string;
+  put_iv_source?: string;
+  quality?: {
+    scanned_at: string | null;
+    underlying_at: string | null;
+    iv_skew_ratio: number | null;
+    legs: Record<"call" | "put", { price_source: string; price_at: string | null; spread_pct: number | null; quality_score: number }>;
+    flags: { code: string; message: string; side: string; blocking: boolean }[];
+    eligibility: Record<"highest_premium" | "expensive_calls" | "expensive_puts", { eligible: boolean; reasons: string[] }>;
+    ranking: Record<"highest_premium" | "expensive_calls" | "expensive_puts", { raw_ratio: number | null; quality_multiplier: number; calculated_score: number; saved_score: number | null; effective_score: number }>;
+  };
 }
 
 export interface ThetaPlaysResponse {
@@ -258,12 +276,13 @@ export interface ThetaPlaysResponse {
   scan_id?: string;
   scanned_at?: string;
   hv_days?: number;
+  quality_counts?: Record<"highest_premium" | "expensive_calls" | "expensive_puts", { eligible: number; total: number }>;
   error?: string;
 }
 
-export async function fetchThetaPlays(expiry?: string): Promise<ThetaPlaysResponse | null> {
+export async function fetchThetaPlays(expiry?: string, includeFlagged = false): Promise<ThetaPlaysResponse | null> {
   try {
-    const qs = expiry ? `?expiry=${expiry}` : "";
+    const qs = `?${new URLSearchParams({ ...(expiry ? { expiry } : {}), include_flagged: String(includeFlagged) })}`;
     const res = await fetch(`${API_BASE}/theta-plays${qs}`);
     if (!res.ok) return null;
     const data = await res.json();
