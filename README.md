@@ -167,13 +167,15 @@ small for an initial public trial; raise them after observing real usage.
 | Variable | Default | Scope |
 | --- | ---: | --- |
 | `AI_REQUESTS_PER_MINUTE` | 4 | Each account; rolling 60 seconds |
-| `AI_USER_REQUESTS_PER_DAY` | 5 | Each account; UTC day |
-| `AI_USER_REQUESTS_PER_MONTH` | 50 | Each account; UTC calendar month |
-| `AI_REQUESTS_PER_DAY` | 20 | Shared across all accounts and both AI routes |
+| `AI_USER_REQUESTS_PER_DAY` | 100 | Each account; UTC day |
+| `AI_USER_REQUESTS_PER_MONTH` | 200 | Each account; UTC calendar month |
+| `AI_REQUESTS_PER_DAY` | 100 | Shared across all accounts and both AI routes |
 | `AI_REQUESTS_PER_MONTH` | 200 | Shared across all accounts and both AI routes |
 | `AI_MAX_CONCURRENT` | 2 | Shared running AI requests |
 
 Zero disables the corresponding allowance; negative/invalid values fail closed.
+The signed-in navigation label shows daily credits used, for example
+`Credits 0/100`. One credit is one admitted AI request, not a currency balance.
 One chat turn is one request, even if it invokes multiple model/tools calls.
 Market Context is one request, including its search and formatting calls. Running
 a prediction also requests Market Context when signed in. Attempts admitted to

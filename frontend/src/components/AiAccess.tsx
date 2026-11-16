@@ -73,20 +73,20 @@ export default function AiAccess({ label = "AI access", className = "", redirect
 
   return <>
     <button type="button" className={`ai-access-button ${className}`} onClick={() => { setError(""); setOpen(true); }}>
-      {session ? `AI ${session.usage.your_daily_requests}/${session.usage.limits.per_user_daily}` : label}
+      {session ? `Credits ${session.usage.your_daily_requests}/${session.usage.limits.per_user_daily}` : label}
     </button>
     {open && <dialog ref={dialog} className="ai-access-dialog" aria-labelledby={titleId} onCancel={() => setOpen(false)}>
       <h2 id={titleId}>AI access</h2>
       {session ? <>
         <p className="ai-access-email">{session.user.email}</p>
         <dl>
-          <dt>Your requests today</dt><dd>{session.usage.your_daily_requests} / {session.usage.limits.per_user_daily}</dd>
-          <dt>Your requests this month</dt><dd>{session.usage.your_monthly_requests} / {session.usage.limits.per_user_monthly}</dd>
-          <dt>Shared daily budget</dt><dd>{session.usage.daily_requests} / {session.usage.limits.daily}</dd>
-          <dt>Shared monthly budget</dt><dd>{session.usage.monthly_requests} / {session.usage.limits.monthly}</dd>
+          <dt>Your credits used today</dt><dd>{session.usage.your_daily_requests} / {session.usage.limits.per_user_daily}</dd>
+          <dt>Your credits used this month</dt><dd>{session.usage.your_monthly_requests} / {session.usage.limits.per_user_monthly}</dd>
+          <dt>Shared daily credits used</dt><dd>{session.usage.daily_requests} / {session.usage.limits.daily}</dd>
+          <dt>Shared monthly credits used</dt><dd>{session.usage.monthly_requests} / {session.usage.limits.monthly}</dd>
           <dt>Your reported tokens this month</dt><dd>{session.usage.your_reported_total_tokens.toLocaleString()}</dd>
         </dl>
-        <p className="ai-access-note">Resets at midnight UTC. Request allowances are not dollar limits.</p>
+        <p className="ai-access-note">One credit per Dacey turn or Market Context request. Daily credits reset at midnight UTC. Credits are usage allowances, not money.</p>
         <button type="button" className="ai-access-button" onClick={() => {
           signOutAi(); window.google?.accounts.id.disableAutoSelect();
         }}>Sign out</button>

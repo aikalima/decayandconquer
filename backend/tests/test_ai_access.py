@@ -193,6 +193,22 @@ def test_hard_budgets(env, monkeypatch):
     assert ai_usage.usage_summary("one")["monthly_requests"] == 1
 
 
+def test_default_daily_credit_allowance_reaches_100_without_a_lower_cap(monkeypatch):
+    now = datetime(2026, 11, 16, 1, tzinfo=timezone.utc).timestamp()
+    for index in range(100):
+        monkeypatch.setattr(ai_usage.time, "time", lambda: now + index * 61)
+        with ai_usage.metered_request("one", "/chat"):
+            pass
+    summary = ai_usage.usage_summary("one")
+    assert summary["your_daily_requests"] == 100
+    assert summary["limits"]["per_user_daily"] == 100
+    assert summary["limits"]["monthly"] == 200
+    with pytest.raises(HTTPException) as exc:
+        ai_usage.reserve("one", "/market-context")
+    assert exc.value.status_code == 429
+    assert "daily" in exc.value.detail
+
+
 def test_utc_period_rollover_and_rolling_minute(monkeypatch):
     now = datetime(2026, 11, 30, 23, 59, 50, tzinfo=timezone.utc).timestamp()
     monkeypatch.setattr(ai_usage.time, "time", lambda: now)

@@ -20,9 +20,9 @@ def limits() -> dict:
     try:
         values = {key: int(os.getenv(env, default)) for key, env, default in (
             ("per_minute", "AI_REQUESTS_PER_MINUTE", "4"),
-            ("per_user_daily", "AI_USER_REQUESTS_PER_DAY", "5"),
-            ("per_user_monthly", "AI_USER_REQUESTS_PER_MONTH", "50"),
-            ("daily", "AI_REQUESTS_PER_DAY", "20"),
+            ("per_user_daily", "AI_USER_REQUESTS_PER_DAY", "100"),
+            ("per_user_monthly", "AI_USER_REQUESTS_PER_MONTH", "200"),
+            ("daily", "AI_REQUESTS_PER_DAY", "100"),
             ("monthly", "AI_REQUESTS_PER_MONTH", "200"),
             ("concurrent", "AI_MAX_CONCURRENT", "2"),
         )}

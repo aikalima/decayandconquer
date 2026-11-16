@@ -191,7 +191,7 @@ textarea {
   padding: 10px 28px;
 }
 
-@media (max-width: 1140px) {
+@media (max-width: 1200px) {
   .app-header {
     align-items: stretch !important;
     flex-wrap: wrap;
