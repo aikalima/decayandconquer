@@ -144,7 +144,7 @@ sudo systemctl restart decay-api
 echo ""
 echo "--- Nginx route check ---"
 if [[ -f /etc/nginx/sites-available/decay ]]; then
-  for route in app-defaults data-health; do
+  for route in app-defaults data-health ai-access; do
     if ! sudo grep -q "$route" /etc/nginx/sites-available/decay; then
       sudo sed -i "s#location ~ \\^/(#location ~ ^/($route|#" /etc/nginx/sites-available/decay
     fi

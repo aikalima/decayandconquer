@@ -138,7 +138,7 @@ def test_provider_errors_and_client_cleanup(monkeypatch, code, message, expected
     client.close.assert_called_once()
 
 
-def test_route_ignores_legacy_provider(monkeypatch):
+def test_route_ignores_legacy_provider(monkeypatch, authenticated_ai):
     run = AsyncMock(return_value={"response": "Gemini", "tool_results": []})
     monkeypatch.setattr(chat, "run_chat", run)
     messages = [{"role": "user", "content": "hi"}]

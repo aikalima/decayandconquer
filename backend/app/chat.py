@@ -460,6 +460,7 @@ def _validate_messages(messages):
 
 
 async def _run_adk(messages: list[dict], results: list, model) -> str:
+    from app.ai_usage import record_usage
     session_service = InMemorySessionService()
     session = await session_service.create_session(app_name="decay_chat", user_id="request", session_id=uuid4().hex)
     # The browser supplies its history. A fresh, request-scoped ADK session
@@ -484,6 +485,8 @@ async def _run_adk(messages: list[dict], results: list, model) -> str:
             new_message=types.Content(role="user", parts=[types.Part.from_text(text=messages[-1]["content"])]),
             run_config=RunConfig(max_llm_calls=15),
         ):
+            if not event.partial and event.usage_metadata is not None:
+                record_usage(event)
             if event.is_final_response() and event.content:
                 text = "\n".join(part.text for part in event.content.parts or []
                                  if part.text and not part.thought)
@@ -494,10 +497,12 @@ async def _run_adk(messages: list[dict], results: list, model) -> str:
 
 async def run_chat(messages: list[dict]) -> dict:
     """Run one Gemini ADK turn, preserving the browser's response/tool-results API."""
+    from app.ai_usage import mark_failed
     _validate_messages(messages)
     results = []
     key = os.environ.get("GOOGLE_API_KEY", "")
     if not key:
+        mark_failed()
         return {"response": "Dacey needs GOOGLE_API_KEY to be configured.", "tool_results": []}
     from google import genai
 
@@ -507,8 +512,10 @@ async def run_chat(messages: list[dict]) -> dict:
         async with asyncio.timeout(180):
             text = await _run_adk(messages, results, model)
     except TimeoutError:
+        mark_failed()
         text = "Dacey took too long. Please try a narrower question."
     except Exception as exc:
+        mark_failed()
         code = getattr(exc, "code", None)
         logger.error("ADK chat failed (%s, code=%s)", type(exc).__name__, code)
         if isinstance(exc, errors.APIError) and (code in (401, 403) or "API key not valid" in str(exc.message)):

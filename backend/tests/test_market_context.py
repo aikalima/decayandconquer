@@ -62,6 +62,7 @@ def google_client(monkeypatch):
                 raise state.error
             search = bool(kwargs["config"].tools)
             return SimpleNamespace(text="Uncited material must not reach formatter" if search else state.text,
+                usage_metadata=SimpleNamespace(prompt_token_count=100, candidates_token_count=20, total_token_count=120),
                 candidates=[SimpleNamespace(finish_reason=state.finish if search else state.format_finish,
                     grounding_metadata=SimpleNamespace(grounding_chunks=state.chunks,
                                                        grounding_supports=state.supports) if search else None)])
@@ -94,6 +95,15 @@ def test_model_override_does_not_use_chat_model(google_client, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_MODEL", "chat-only")
     news.fetch_market_context("SPY", "2026-11-01", "2026-11-12")
     assert google_client.calls[0]["model"] == "gemini-custom-flash"
+
+
+def test_both_search_and_format_usage_are_recorded(google_client, authenticated_ai):
+    from app import ai_usage
+    with ai_usage.metered_request("test-user", "/market-context"):
+        news.fetch_market_context("SPY", "2026-11-01", "2026-11-12")
+    with ai_usage.connection() as conn:
+        row = conn.execute("SELECT model_responses,total_tokens FROM ai_requests").fetchone()
+        assert tuple(row) == (2, 240)
 
 
 @pytest.mark.parametrize("code,message,expected", [
@@ -152,7 +162,7 @@ def test_empty_success_and_invalid_events_differ(google_client):
         news.fetch_market_context("SPY", "2026-11-01", "2026-11-12")
 
 
-def test_route_requires_google_not_anthropic_key(monkeypatch):
+def test_route_requires_google_not_anthropic_key(monkeypatch, authenticated_ai):
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "present-but-unused")
     payload = TestClient(main.app).get('/market-context').json()
@@ -160,7 +170,7 @@ def test_route_requires_google_not_anthropic_key(monkeypatch):
     assert not payload["events"]
 
 
-def test_route_surfaces_error_without_raw_provider_details(monkeypatch):
+def test_route_surfaces_error_without_raw_provider_details(monkeypatch, authenticated_ai):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     monkeypatch.setattr(main, "build_app_defaults", lambda: {"prediction": {
         "obs_date_from": "2026-11-01", "obs_date_to": "2026-11-12"}})
@@ -172,7 +182,7 @@ def test_route_surfaces_error_without_raw_provider_details(monkeypatch):
     assert payload["disclaimer"] == ""
 
 
-def test_route_identifies_google_on_success(monkeypatch):
+def test_route_identifies_google_on_success(monkeypatch, authenticated_ai):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr(main, "build_app_defaults", lambda: {"prediction": {

@@ -1,4 +1,5 @@
 import type { PredictionParams, PredictionResponse } from "../types/prediction";
+import { paidAiFetch } from "./aiAccess";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -75,7 +76,7 @@ export async function sendChatMessage(
   messages: ChatMessage[],
   signal?: AbortSignal,
 ): Promise<ChatResponse> {
-  const res = await fetch(`${API_BASE}/chat`, {
+  const res = await paidAiFetch("/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages }),
@@ -193,11 +194,16 @@ export async function fetchMarketContext(
   obsTo: string,
 ): Promise<MarketContextResponse> {
   const qs = new URLSearchParams({ ticker, obs_from: obsFrom, obs_to: obsTo });
-  const res = await fetch(`${API_BASE}/market-context?${qs}`);
-  if (!res.ok) {
-    return { events: [], disclaimer: "", error: "Failed to fetch market context." };
+  try {
+    const res = await paidAiFetch(`/market-context?${qs}`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return { events: [], disclaimer: "", error: body.detail || "Failed to fetch market context." };
+    }
+    return res.json();
+  } catch (error) {
+    return { events: [], disclaimer: "", error: error instanceof Error ? error.message : "Failed to fetch market context." };
   }
-  return res.json();
 }
 
 // ---------------------------------------------------------------------------

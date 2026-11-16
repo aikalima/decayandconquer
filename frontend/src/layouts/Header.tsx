@@ -1,15 +1,16 @@
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTheme } from "../themeContext";
+import AiAccess from "../components/AiAccess";
 
 const NAV_ITEMS = [
   {
     label: "Predictions",
-    path: "/",
+    path: "/app/predictions",
     caption: "Backtest & forecast",
   },
   {
     label: "Theta Plays",
-    path: "/theta-plays",
+    path: "/app/theta-plays",
     caption: "Premium scanners",
   },
 ];
@@ -35,9 +36,9 @@ export default function Header() {
       }}
     >
       <div className="app-header-brand" style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-        <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: 0, whiteSpace: "nowrap" }}>
+        <Link to="/" aria-label="Decay And Conquer home" style={{ color: "inherit", textDecoration: "none", fontSize: 22, fontWeight: 800, letterSpacing: 0, whiteSpace: "nowrap" }}>
           Decay <span style={{ color: "var(--brand)" }}>And Conquer</span>
-        </span>
+        </Link>
         <span className="app-header-tagline" style={{ color: "var(--muted)", fontSize: 13, fontWeight: 650, whiteSpace: "nowrap" }}>
           Options dashboard
         </span>
@@ -55,9 +56,7 @@ export default function Header() {
         }}
       >
         {NAV_ITEMS.map((item) => {
-          const active = item.path === "/"
-            ? location.pathname === "/"
-            : location.pathname.startsWith(item.path);
+          const active = location.pathname.startsWith(item.path);
           return (
             <button
               key={item.path}
@@ -91,6 +90,8 @@ export default function Header() {
       </nav>
 
       <div style={{ flex: 1 }} />
+
+      <AiAccess />
 
       <div
         role="group"

@@ -167,6 +167,7 @@ def fetch_market_context_google(
 
     from google import genai
     from google.genai import types, errors
+    from app.ai_usage import record_usage
 
     try:
         prompt = PROMPT_TEMPLATE.format(
@@ -185,6 +186,7 @@ def fetch_market_context_google(
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(google_search=types.GoogleSearch())], max_output_tokens=4096),
             )
+            record_usage(research)
             evidence = _grounded_evidence(_completed_candidate(research))
             response = client.models.generate_content(
                 model=model,
@@ -193,6 +195,7 @@ def fetch_market_context_google(
                 config=types.GenerateContentConfig(response_mime_type="application/json",
                     response_json_schema=EVENT_SCHEMA, max_output_tokens=4096),
             )
+            record_usage(response)
         _completed_candidate(response)
         events = _parse_events(response.text)
         valid = _validate_events(_attribute_events(events, evidence), obs_from, obs_to)

@@ -4,7 +4,7 @@ import os
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
@@ -22,6 +22,8 @@ set_read_only(True)
 from app.news import fetch_market_context, MarketContextError
 from app.screener import scan_all, DEFAULT_TICKERS
 from app.defaults import build_app_defaults
+from app.ai_access import auth_config, require_ai_user
+from app.ai_usage import mark_failed, metered_request, usage_summary
 from app.data.db import get_latest_theta_scan, get_latest_theta_scan_by_expiry, get_theta_results, get_available_theta_expiries, get_theta_scan
 
 logging.basicConfig(level=logging.INFO)
@@ -31,11 +33,29 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[origin.strip() for origin in os.getenv(
+        "APP_ALLOWED_ORIGINS", "http://localhost:6161,http://127.0.0.1:6161,https://decayandconquer.com,https://www.decayandconquer.com"
+    ).split(",") if origin.strip()],
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+
+async def paid_ai_request(request: Request, user: dict = Depends(require_ai_user)):
+    with metered_request(user["sub"], request.url.path):
+        yield
+
+
+@app.get("/ai-access/config")
+async def ai_access_config():
+    return auth_config()
+
+
+@app.get("/ai-access/status")
+async def ai_access_status(response: Response, user: dict = Depends(require_ai_user)):
+    response.headers["Cache-Control"] = "no-store"
+    return {"user": user, "usage": usage_summary(user["sub"])}
 
 
 def _sse(data: dict) -> str:
@@ -122,7 +142,7 @@ async def data_health():
     return get_data_health()
 
 
-@app.post("/chat")
+@app.post("/chat", dependencies=[Depends(paid_ai_request)])
 async def chat_endpoint(body: dict):
     """Run Dacey through Google ADK and Gemini; legacy provider fields are ignored."""
     from app.chat import run_chat
@@ -206,7 +226,7 @@ async def predict_price_stream(
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-@app.get("/market-context")
+@app.get("/market-context", dependencies=[Depends(paid_ai_request)])
 async def market_context(
     ticker: str = "SPY",
     obs_from: Optional[str] = None,
@@ -215,6 +235,7 @@ async def market_context(
     """Fetch AI-generated market context for the observation period."""
     try:
         if not os.environ.get("GOOGLE_API_KEY"):
+            mark_failed()
             return {
                 "events": [],
                 "disclaimer": "",
@@ -223,15 +244,25 @@ async def market_context(
         defaults = build_app_defaults()["prediction"]
         obs_from = obs_from or defaults["obs_date_from"]
         obs_to = obs_to or defaults["obs_date_to"]
+        if not ticker or len(ticker) > 15 or not all(c.isalnum() or c in ".-" for c in ticker):
+            raise MarketContextError("Enter a valid stock ticker.")
+        try:
+            start, end = date.fromisoformat(obs_from), date.fromisoformat(obs_to)
+        except ValueError as exc:
+            raise MarketContextError("Use valid observation dates (YYYY-MM-DD).") from exc
+        if not 0 <= (end - start).days <= 366:
+            raise MarketContextError("Market Context supports observation windows up to one year.")
         events = await run_in_threadpool(fetch_market_context, ticker, obs_from, obs_to)
         return {
             "events": events,
             "disclaimer": "Sourced via Gemini and Google Search. AI-summarized, verify independently.",
         }
     except MarketContextError as e:
+        mark_failed()
         return {"events": [], "disclaimer": "", "error": str(e)}
     except Exception as e:
         logger.error("market-context failed (%s)", type(e).__name__)
+        mark_failed()
         return {"events": [], "disclaimer": "", "error": "Failed to fetch market context. Please try again."}
 
 

@@ -140,6 +140,7 @@ backend/app/data/flat_files/
 
 # Cached API responses
 backend/app/data/cache/
+backend/var/
 
 # Frontend
 frontend/node_modules/

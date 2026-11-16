@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     port: 6161,
     proxy: {
+      "/ai-access": "http://localhost:6173",
       "/data-health": "http://localhost:6173",
       "/app-defaults": "http://localhost:6173",
       "/chat": "http://localhost:6173",

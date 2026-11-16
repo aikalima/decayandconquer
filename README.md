@@ -72,6 +72,14 @@ npm run dev
 
 Open [http://localhost:6161](http://localhost:6161) in your browser.
 
+The public home page introduces the research tools with actual, historical app
+screenshots. Dashboard routes are `/app/predictions` and `/app/theta-plays`;
+the `/app/` prefix keeps browser deep links separate from the API routes used by
+Vite and Nginx. Google sign-in from the home page opens Predictions after successful
+verification. Browsing the home page does not run predictions or paid AI calls.
+Screenshots in `frontend/public/screenshots/` are examples, not current quotes;
+the Theta capture explicitly includes flagged candidates for inspection.
+
 ### Dacey and Market Context
 
 Dacey uses Google ADK with Gemini Flash for conversation and tool orchestration.
@@ -94,6 +102,117 @@ model-written source labels. Event dates are checked against the observation
 period. Citations are evidence pointers, not independent fact verification.
 Provider, parsing and grounding failures are shown as
 errors instead of "no significant events". There is no Anthropic fallback.
+
+### AI Sign-In and Usage Limits
+
+The dashboard, predictions and saved Theta results remain public. **Dacey and
+Market Context require Google sign-in. Any Google account may sign in**; access
+is not restricted to the project owner or organization. This does not grant
+visitors access to your Google Cloud project, API keys, Gmail or Drive.
+
+The backend fails closed: without sign-in configuration, or if usage storage is
+unavailable, it does not run paid AI requests. There is no localhost auth bypass.
+
+#### Google Setup
+
+1. Open [Google Auth Platform / Clients](https://console.cloud.google.com/auth/clients?project=decayandconquer)
+   as `markus@aikalima.com`. Reuse an appropriate **Web application** client or
+   create one named `Decay And Conquer web`.
+2. For a new setup, configure the app's branding/contact information and an
+   **External** audience. Basic Google sign-in needs only identity information,
+   not sensitive API scopes. Follow any Console publishing/verification steps
+   required for your configuration before opening it to general users.
+3. Set **Authorized JavaScript origins** to `http://localhost:6161`,
+   `http://127.0.0.1:6161`, `https://decayandconquer.com` and
+   `https://www.decayandconquer.com`. No redirect URI or client secret is used by
+   this JavaScript callback / ID-token flow. Do not add the production HTTP IP.
+4. Add the public client ID to the repo-root `.env` and restart the backend:
+
+   ```dotenv
+   GOOGLE_OAUTH_CLIENT_ID=YOUR_CLIENT_ID.apps.googleusercontent.com
+   ```
+
+5. Open **AI access** in the dashboard header and sign in. The dialog shows your
+   usage and the shared request budgets. The existing `GOOGLE_API_KEY` remains
+   server-side and is still required for Gemini.
+
+See Google's [web client setup](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid)
+and [ID-token verification](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token)
+documentation. Localhost may use HTTP; production must use HTTPS.
+
+#### How a Request Works
+
+```text
+Google sign-in -> browser holds an ID token in memory
+  -> Authorization: Bearer <token> on /chat or /market-context
+  -> backend verifies Google's signature, issuer, client ID and expiry
+  -> SQLite transaction checks limits and reserves one request
+  -> Gemini runs; returned token usage is collected
+  -> request is marked finished/failed and its concurrency slot is released
+```
+
+The stable Google `sub` claim owns the account allowance. IP headers and
+browser-supplied email addresses cannot choose an identity or reset a counter.
+Tokens are not stored in local/session storage or in the usage database. Refreshing
+the page requires signing in again. Sign-out clears this browser's token; it does
+not revoke a previously copied token, which remains valid until Google's expiry.
+Do not share ID tokens. Conversation content and API keys are not stored in the
+usage ledger, only account IDs, request timestamps, endpoint, status and counts.
+
+#### Configurable Limits
+
+All values are server-side environment variables. Defaults are deliberately
+small for an initial public trial; raise them after observing real usage.
+
+| Variable | Default | Scope |
+| --- | ---: | --- |
+| `AI_REQUESTS_PER_MINUTE` | 4 | Each account; rolling 60 seconds |
+| `AI_USER_REQUESTS_PER_DAY` | 5 | Each account; UTC day |
+| `AI_USER_REQUESTS_PER_MONTH` | 50 | Each account; UTC calendar month |
+| `AI_REQUESTS_PER_DAY` | 20 | Shared across all accounts and both AI routes |
+| `AI_REQUESTS_PER_MONTH` | 200 | Shared across all accounts and both AI routes |
+| `AI_MAX_CONCURRENT` | 2 | Shared running AI requests |
+
+Zero disables the corresponding allowance; negative/invalid values fail closed.
+One chat turn is one request, even if it invokes multiple model/tools calls.
+Market Context is one request, including its search and formatting calls. Running
+a prediction also requests Market Context when signed in. Attempts admitted to
+the budget count even if they fail, time out or the browser disconnects; rejected
+requests do not count. A worker crash holds its slot for up to ten minutes but
+does not refund the request. Limits return HTTP 429; missing/invalid credentials
+return 401; missing configuration or unavailable control storage returns 503.
+
+`AI_USAGE_DB_PATH` defaults to `backend/var/ai_usage.sqlite3` (Git-ignored).
+It is separate from DuckDB and survives ordinary app restarts and data refreshes.
+For the VM, prefer an explicit persistent location such as
+`/data/decay/state/ai_usage.sqlite3`, writable by the `decay` service user. Do not
+delete it to refresh market data: deleting it resets your usage counters.
+SQLite's check-and-insert transaction is shared by both Uvicorn workers. Separate
+machines/Cloud Run instances would need shared transactional storage instead.
+
+**These are hard request limits, not a $100 billing cap.** Token totals reflect
+reported responses, not billing reconciliation; interrupted calls, provider
+retries and Google Search charges may be absent. Existing per-turn bounds remain
+15 model calls, 20 tool calls, 4,096 output tokens per model response and a
+180-second chat deadline. Google billing controls still matter. This protects
+paid AI routes, not every public calculation/API endpoint or all denial-of-service
+traffic. CORS is restricted to the local/production origins above (override with
+comma-separated `APP_ALLOWED_ORIGINS`); CORS itself is not authentication.
+
+To verify the gate without spending credits:
+
+```bash
+curl -i http://localhost:6173/market-context
+# 401 once configured; 503 before sign-in setup. Neither calls Gemini.
+
+cd backend
+.venv/bin/python -m pytest tests/test_ai_access.py tests/test_chat_adk.py tests/test_market_context.py -q
+```
+
+Deployment must copy `GOOGLE_OAUTH_CLIENT_ID` and the desired limits into the
+production `.env`, preserve the usage file, and restart the API. The deployment
+script also adds `/ai-access` to Nginx's API routes. Do not deploy this change
+without configuring sign-in first, or production AI access will be disabled.
 
 ## Testing
 
