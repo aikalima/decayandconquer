@@ -39,6 +39,7 @@ export default function BacktestPage() {
   const [showExplainer, setShowExplainer] = useState(false);
   const [marketEvents, setMarketEvents] = useState<MarketEvent[]>([]);
   const [marketDisclaimer, setMarketDisclaimer] = useState("");
+  const [marketError, setMarketError] = useState("");
   const [marketLoading, setMarketLoading] = useState(false);
   const [hoveredEventIndex, setHoveredEventIndex] = useState<number | null>(null);
   const [appDefaults, setAppDefaults] = useState<AppDefaultsResponse | null>(null);
@@ -57,14 +58,17 @@ export default function BacktestPage() {
     // Fetch market context in parallel (non-blocking)
     setMarketLoading(true);
     setMarketEvents([]);
+    setMarketError("");
+    setMarketDisclaimer("");
     fetchMarketContext(p.ticker, p.obs_date_from, p.obs_date_to)
       .then((ctx) => {
         setMarketEvents(ctx.events);
         setMarketDisclaimer(ctx.disclaimer);
+        setMarketError(ctx.error ?? "");
       })
       .catch(() => {
         setMarketEvents([]);
-        setMarketDisclaimer("Failed to fetch market context.");
+        setMarketError("Failed to fetch market context.");
       })
       .finally(() => setMarketLoading(false));
 
@@ -193,6 +197,7 @@ export default function BacktestPage() {
               events={marketEvents}
               loading={marketLoading}
               disclaimer={marketDisclaimer}
+              error={marketError}
               hoveredIndex={hoveredEventIndex}
               onHover={setHoveredEventIndex}
             />

@@ -60,16 +60,15 @@ chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 MASSIVE_KEY=$(gcloud secrets versions access latest --secret=massive-api-key 2>/dev/null || echo "")
 MASSIVE_S3_ACCESS_KEY=$(gcloud secrets versions access latest --secret=massive-s3-access-key 2>/dev/null || echo "")
 MASSIVE_S3_SECRET_KEY=$(gcloud secrets versions access latest --secret=massive-s3-secret-key 2>/dev/null || echo "")
-ANTHROPIC_KEY=$(gcloud secrets versions access latest --secret=anthropic-api-key 2>/dev/null || echo "")
 GOOGLE_KEY=$(gcloud secrets versions access latest --secret=google-api-key 2>/dev/null || echo "")
 
 cat > "$APP_DIR/.env" <<EOF
 MASSIVE_API_KEY=$MASSIVE_KEY
 MASSIVE_S3_ACCESS_KEY=$MASSIVE_S3_ACCESS_KEY
 MASSIVE_S3_SECRET_KEY=$MASSIVE_S3_SECRET_KEY
-ANTHROPIC_API_KEY=$ANTHROPIC_KEY
-ANTHROPIC_MODEL=${anthropic_model}
 GOOGLE_API_KEY=$GOOGLE_KEY
+CHAT_MODEL=${chat_model}
+MARKET_CONTEXT_MODEL=${market_context_model}
 EOF
 chown "$APP_USER:$APP_USER" "$APP_DIR/.env"
 chmod 600 "$APP_DIR/.env"

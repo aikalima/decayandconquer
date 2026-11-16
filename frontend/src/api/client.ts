@@ -22,8 +22,6 @@ export interface ChatResponse {
   tool_results: ToolResult[];
 }
 
-export type ChatProvider = "google" | "anthropic";
-
 // ---------------------------------------------------------------------------
 // App Defaults
 // ---------------------------------------------------------------------------
@@ -75,13 +73,12 @@ export async function fetchAppDefaults(): Promise<AppDefaultsResponse | null> {
 
 export async function sendChatMessage(
   messages: ChatMessage[],
-  provider: ChatProvider = "google",
   signal?: AbortSignal,
 ): Promise<ChatResponse> {
   const res = await fetch(`${API_BASE}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages, provider }),
+    body: JSON.stringify({ messages }),
     signal,
   });
   if (!res.ok) {
@@ -187,6 +184,7 @@ export interface MarketEvent {
 export interface MarketContextResponse {
   events: MarketEvent[];
   disclaimer: string;
+  error?: string;
 }
 
 export async function fetchMarketContext(
@@ -197,7 +195,7 @@ export async function fetchMarketContext(
   const qs = new URLSearchParams({ ticker, obs_from: obsFrom, obs_to: obsTo });
   const res = await fetch(`${API_BASE}/market-context?${qs}`);
   if (!res.ok) {
-    return { events: [], disclaimer: "Failed to fetch market context." };
+    return { events: [], disclaimer: "", error: "Failed to fetch market context." };
   }
   return res.json();
 }

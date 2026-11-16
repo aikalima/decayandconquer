@@ -43,10 +43,11 @@ resource "google_compute_instance" "decay" {
   }
 
   metadata_startup_script = templatefile("${path.module}/startup.sh", {
-    app_repo_url    = var.app_repo_url
-    anthropic_model = var.anthropic_model
-    domain_name     = var.domain_name
-    ssh_user        = var.ssh_user
+    app_repo_url         = var.app_repo_url
+    chat_model           = var.chat_model
+    market_context_model = var.market_context_model
+    domain_name          = var.domain_name
+    ssh_user             = var.ssh_user
   })
 
   service_account {
@@ -66,6 +67,6 @@ resource "google_compute_instance" "decay" {
   depends_on = [
     google_project_service.compute,
     google_secret_manager_secret_version.massive_api_key,
-    google_secret_manager_secret_version.anthropic_api_key,
+    google_secret_manager_secret_version.google_api_key,
   ]
 }

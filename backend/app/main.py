@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.modules.health import get_ping_response
 from app.prediction_pipeline.predict import (
@@ -18,7 +19,7 @@ from app.data.db import set_read_only
 
 # Server only reads from DuckDB — never hold a write lock
 set_read_only(True)
-from app.news import fetch_market_context
+from app.news import fetch_market_context, MarketContextError
 from app.screener import scan_all, DEFAULT_TICKERS
 from app.defaults import build_app_defaults
 from app.data.db import get_latest_theta_scan, get_latest_theta_scan_by_expiry, get_theta_results, get_available_theta_expiries, get_theta_scan
@@ -123,14 +124,13 @@ async def data_health():
 
 @app.post("/chat")
 async def chat_endpoint(body: dict):
-    """Conversational AI endpoint. Supports 'google' (default) and 'anthropic' providers."""
+    """Run Dacey through Google ADK and Gemini; legacy provider fields are ignored."""
     from app.chat import run_chat
     messages = body.get("messages", [])
-    provider = body.get("provider", "google")
     if not messages:
         raise HTTPException(status_code=400, detail="No messages provided")
     try:
-        result = run_chat(messages, provider=provider)
+        result = await run_chat(messages)
         # Sanitize NaN/inf values that break JSON serialization
         import math
         def _sanitize(obj):
@@ -142,9 +142,11 @@ async def chat_endpoint(body: dict):
                 return [_sanitize(v) for v in obj]
             return obj
         return _sanitize(result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        logger.error("chat failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("chat failed (%s)", type(e).__name__)
+        raise HTTPException(status_code=500, detail="Dacey is temporarily unavailable.") from e
 
 
 @app.get("/predict")
@@ -212,22 +214,25 @@ async def market_context(
 ):
     """Fetch AI-generated market context for the observation period."""
     try:
-        if not os.environ.get("ANTHROPIC_API_KEY"):
+        if not os.environ.get("GOOGLE_API_KEY"):
             return {
                 "events": [],
-                "disclaimer": "Market context is disabled because ANTHROPIC_API_KEY is not configured.",
+                "disclaimer": "",
+                "error": "Market context needs GOOGLE_API_KEY to be configured.",
             }
         defaults = build_app_defaults()["prediction"]
         obs_from = obs_from or defaults["obs_date_from"]
         obs_to = obs_to or defaults["obs_date_to"]
-        events = fetch_market_context(ticker, obs_from, obs_to)
+        events = await run_in_threadpool(fetch_market_context, ticker, obs_from, obs_to)
         return {
             "events": events,
-            "disclaimer": "Sourced via Anthropic web search. AI-summarized, verify independently.",
+            "disclaimer": "Sourced via Gemini and Google Search. AI-summarized, verify independently.",
         }
+    except MarketContextError as e:
+        return {"events": [], "disclaimer": "", "error": str(e)}
     except Exception as e:
-        logger.error("market-context failed: %s", e)
-        return {"events": [], "disclaimer": "Failed to fetch market context."}
+        logger.error("market-context failed (%s)", type(e).__name__)
+        return {"events": [], "disclaimer": "", "error": "Failed to fetch market context. Please try again."}
 
 
 def _try_theta_json_fallback(expiry=None, include_flagged=False):

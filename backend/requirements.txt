@@ -10,6 +10,7 @@ pandas
 numpy
 duckdb
 boto3
-anthropic
+google-adk==2.14.1
 google-genai
+jsonschema
 mcp[cli]

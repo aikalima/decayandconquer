@@ -72,6 +72,29 @@ npm run dev
 
 Open [http://localhost:6161](http://localhost:6161) in your browser.
 
+### Dacey and Market Context
+
+Dacey uses Google ADK with Gemini Flash for conversation and tool orchestration.
+Set `GOOGLE_API_KEY` in the repo-root `.env`; optionally set
+`CHAT_MODEL=gemini-3.8-flash`. Prediction, database, ticker comparison and
+quality-filtered Theta tools remain available. Browser conversation history is
+replayed into a fresh ADK session per request, without sharing user sessions.
+Requests are limited to 60 messages, 15 model calls and 20 tool calls.
+Anthropic is no longer used by the application; `ANTHROPIC_API_KEY` and
+`ANTHROPIC_MODEL` are ignored. Existing cloud secrets are not deleted.
+
+Market Context uses Gemini Flash-Lite with Google Search grounding. Configure the same
+`GOOGLE_API_KEY` in the repo-root
+`.env`. The default model is `gemini-3.5-flash-lite`; optionally override it with
+`MARKET_CONTEXT_MODEL`. Restart the backend after changing environment settings.
+
+Search first produces cited prose. A second call formats only the cited segments
+as structured JSON; publisher names come from Google's citation metadata, not
+model-written source labels. Event dates are checked against the observation
+period. Citations are evidence pointers, not independent fact verification.
+Provider, parsing and grounding failures are shown as
+errors instead of "no significant events". There is no Anthropic fallback.
+
 ## Testing
 
 ```bash
@@ -398,7 +421,7 @@ decay_core/
       main.py                # FastAPI server
       screener.py            # Theta plays computation (IV/HV, beta, efficiency)
       theta_mcp.py           # Read-only MCP server for theta_scans/theta_results
-      news.py                # Market context via Anthropic web search
+      news.py                # Market context via Gemini Flash + Google Search
       prediction_pipeline/   # 5-step PDF estimation pipeline
       data/
         db.py                # DuckDB schema + queries (options, theta_scans, theta_results)
@@ -451,7 +474,7 @@ cd terraform
 # 1. Configure variables
 cp terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars with your project ID, API keys, etc.
-# Optional: set anthropic_model = "claude-sonnet-5"
+# Optional: chat_model = "gemini-3.8-flash", market_context_model = "gemini-3.5-flash-lite"
 
 # 2. Initialize and apply
 terraform init

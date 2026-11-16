@@ -48,19 +48,25 @@ variable "massive_s3_secret_key" {
 }
 
 variable "anthropic_api_key" {
-  description = "Anthropic API key for Claude chat"
+  description = "Legacy retained secret value, unused by the app; kept to avoid deleting existing secrets"
   type        = string
   sensitive   = true
 }
 
-variable "anthropic_model" {
-  description = "Anthropic Claude model ID for Dacey chat"
+variable "chat_model" {
+  description = "Gemini model ID for Dacey's Google ADK agent"
   type        = string
-  default     = "claude-sonnet-5"
+  default     = "gemini-3.8-flash"
+}
+
+variable "market_context_model" {
+  description = "Gemini model ID for Google Search-grounded market context"
+  type        = string
+  default     = "gemini-3.5-flash-lite"
 }
 
 variable "google_api_key" {
-  description = "Google API key for Gemini (market context)"
+  description = "Google API key for Gemini (Dacey and market context)"
   type        = string
   sensitive   = true
   default     = ""

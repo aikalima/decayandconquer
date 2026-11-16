@@ -58,7 +58,8 @@ resource "google_secret_manager_secret_version" "massive_s3_secret_key" {
   secret_data = var.massive_s3_secret_key
 }
 
-# Anthropic API key
+# Legacy secret retained to avoid a destructive Terraform change. The app and
+# startup script no longer read this; retire the resource separately if desired.
 resource "google_secret_manager_secret" "anthropic_api_key" {
   secret_id = "anthropic-api-key"
 
@@ -74,7 +75,7 @@ resource "google_secret_manager_secret_version" "anthropic_api_key" {
   secret_data = var.anthropic_api_key
 }
 
-# Google API key (optional, for Gemini market context)
+# Google API key (Dacey ADK chat and Gemini market context)
 resource "google_secret_manager_secret" "google_api_key" {
   count     = var.google_api_key != "" ? 1 : 0
   secret_id = "google-api-key"

@@ -98,7 +98,7 @@ export default function ChatPanel() {
         { role: "user" as const, content: text },
       ];
 
-      const result = await sendChatMessage(history, "anthropic", controller.signal);
+      const result = await sendChatMessage(history, controller.signal);
 
       setMessages((prev) => {
         const updated = [...prev];

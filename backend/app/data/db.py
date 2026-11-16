@@ -15,6 +15,8 @@ from __future__ import annotations
 import logging
 import os
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -27,6 +29,25 @@ FLAT_FILES_DIR = Path(__file__).parent / "flat_files"
 
 _connection: duckdb.DuckDBPyConnection | None = None
 _default_read_only: bool = False
+_scoped_reader = ContextVar("duckdb_scoped_reader", default=None)
+
+
+@contextmanager
+def isolated_read_db():
+    """Give an agent tool its own cursor and block SQL file/network access."""
+    conn = duckdb.connect(":memory:", config={"threads": 2, "memory_limit": "512MB"})
+    token = None
+    try:
+        path = str(DB_PATH.resolve()).replace("'", "''")
+        conn.execute(f"ATTACH '{path}' AS dashboard (READ_ONLY)")
+        conn.execute("USE dashboard")
+        conn.execute("SET enable_external_access = false")
+        token = _scoped_reader.set(conn)
+        yield conn
+    finally:
+        if token is not None:
+            _scoped_reader.reset(token)
+        conn.close()
 
 # Regex to parse OCC ticker: O:{UNDERLYING}{YYMMDD}{C|P}{STRIKE*1000 8-digit}
 _OCC_RE = re.compile(r'^O:([A-Z]+)(\d{6})([CP])(\d{8})$')
@@ -117,6 +138,11 @@ def get_db(read_only: bool | None = None) -> duckdb.DuckDBPyConnection:
     a write lock. CLI scripts that need to write call get_db(read_only=False).
     """
     global _connection
+    scoped = _scoped_reader.get()
+    if scoped is not None:
+        if read_only is False:
+            raise ValueError("Agent tools cannot open the database for writes")
+        return scoped
     if read_only is None:
         read_only = _default_read_only
     if _connection is None:

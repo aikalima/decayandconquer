@@ -4,13 +4,14 @@ interface Props {
   events: MarketEvent[];
   loading: boolean;
   disclaimer?: string;
+  error?: string;
   hoveredIndex?: number | null;
   onHover?: (index: number | null) => void;
 }
 
 import { CATEGORY_COLORS } from "./categoryColors";
 
-export default function MarketContext({ events, loading, disclaimer, hoveredIndex, onHover }: Props) {
+export default function MarketContext({ events, loading, disclaimer, error, hoveredIndex, onHover }: Props) {
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 18, boxShadow: "var(--shadow-soft)" }}>
       <h3 className="dashboard-section-title" style={{ marginBottom: 4 }}>
@@ -43,7 +44,13 @@ export default function MarketContext({ events, loading, disclaimer, hoveredInde
         </div>
       )}
 
-      {!loading && events.length === 0 && (
+      {!loading && error && (
+        <div role="alert" style={{ fontSize: 14, color: "var(--risk-text)", padding: "8px 0" }}>
+          {error}
+        </div>
+      )}
+
+      {!loading && !error && events.length === 0 && (
         <div style={{ fontSize: 13, color: "var(--muted)", padding: "8px 0" }}>
           No significant events identified for this period.
         </div>

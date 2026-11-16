@@ -54,7 +54,7 @@ export default function ChatPage() {
         { role: "user" as const, content: text },
       ];
 
-      const result = await sendChatMessage(history, "anthropic");
+      const result = await sendChatMessage(history);
 
       setMessages((prev) => {
         const updated = [...prev];

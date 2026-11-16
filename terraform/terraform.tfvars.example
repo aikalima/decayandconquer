@@ -3,11 +3,14 @@ project_id       = "my-gcp-project-id"
 massive_api_key  = "your-massive-api-key"
 massive_s3_access_key = "your-massive-flat-files-s3-access-key"
 massive_s3_secret_key = "your-massive-flat-files-s3-secret-key"
-anthropic_api_key = "sk-ant-..."
+# Legacy Terraform-managed secret retained to avoid deleting existing state.
+# Not read by the app; keep its existing value for existing installations.
+anthropic_api_key = "unused"
 
 # Optional
-anthropic_model  = "claude-sonnet-5"     # Claude model for Dacey chat
-google_api_key   = ""                    # For Gemini market context feature
+chat_model      = "gemini-3.8-flash"     # Google ADK Dacey agent
+market_context_model = "gemini-3.5-flash-lite"
+google_api_key   = ""                    # Required for Dacey and market context
 region           = "us-east4"            # Low latency to US markets
 zone             = "us-east4-c"
 machine_type     = "e2-medium"           # 2 vCPU, 4GB RAM (~$24/mo)

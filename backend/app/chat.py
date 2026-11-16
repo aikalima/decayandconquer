@@ -1,25 +1,31 @@
-"""Chat endpoint with configurable LLM provider (Google Gemini or Anthropic Claude).
-
-Both providers share the same tool definitions and handlers. The provider
-is selected via the `provider` parameter (default: "google").
-"""
+"""Dacey: Google ADK agent with Gemini Flash and read-only dashboard tools."""
 
 from __future__ import annotations
 import json
+import asyncio
 import logging
+import math
 import os
 from datetime import date, timedelta
-from typing import Any, Literal
+from uuid import uuid4
 
 import numpy as np
 
 from app.prediction_pipeline.predict import predict_price, predict_price_averaged
-from app.data.db import get_db, get_stats
+from app.data.db import get_db, get_stats, isolated_read_db
+from google.adk.agents import LlmAgent
+from google.adk.agents.run_config import RunConfig
+from google.adk.events import Event
+from google.adk.models import Gemini
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.adk.tools import BaseTool
+from google.genai import types, errors
+from jsonschema import validate, ValidationError
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
-RETRYABLE_ANTHROPIC_STATUS_CODES = {500, 502, 503, 504, 529}
+DEFAULT_CHAT_MODEL = "gemini-3.8-flash"
 
 def _prompt_defaults() -> dict[str, str]:
     try:
@@ -40,13 +46,11 @@ def _prompt_defaults() -> dict[str, str]:
         }
 
 
-_PROMPT_DEFAULTS = _prompt_defaults()
-
 SYSTEM_PROMPT = """You are a quantitative finance analyst assistant for the Decay And Conquer options analysis platform.
 
 You have access to a DuckDB database with three tables:
 
-1. **options** — 90M+ rows of historical US options OHLC data (2025-2026)
+1. **options** — historical US options OHLC data (coverage dates below)
    Columns: underlying, expiry, contract_type (C/P), strike, ticker, trade_date, open, high, low, close, volume, transactions
 
    CRITICAL OPTIONS DATA RULES:
@@ -78,7 +82,10 @@ You can:
 3. Compare multiple tickers side by side
 4. Retrieve the latest theta plays screener results
 
-When asked about theta plays or options to sell, use the get_theta_plays tool or query theta_results directly.
+When asked about theta plays or options to sell, use get_theta_plays. It applies the same data-quality filters as the dashboard.
+IV/HV richness is a volatility ratio, not a dollar premium or a trade recommendation.
+Never replace a zero quality/rank score with raw IV/HV. Explain timestamps and warnings.
+Risk-neutral probabilities describe finishing prices, not touching a price before expiry or guaranteed real-world odds.
 When asked about a stock's outlook or prediction, use run_prediction with recent observation dates.
 - For obs_date_from, use a date 2-4 months before today to capture enough data
 - For obs_date_to, use the latest available trading date ({latest_data_date})
@@ -93,11 +100,11 @@ Keep responses concise and well-formatted:
 - Use headers (## or ###) to separate sections
 - Always put a blank line before a list of bullet points
 - Don't use em dashes
-- Don't use markdown tables (they render poorly in the narrow chat panel)""".format(**_PROMPT_DEFAULTS)
+- Don't use markdown tables (they render poorly in the narrow chat panel)"""
 
 
 # ---------------------------------------------------------------------------
-# Tool definitions (provider-agnostic format, converted per provider)
+# Tool definitions exposed through ADK
 # ---------------------------------------------------------------------------
 
 TOOL_DEFS = [
@@ -147,8 +154,8 @@ TOOL_DEFS = [
     {
         "name": "get_theta_plays",
         "description": (
-            "Get the latest theta plays screener results: options with IV exceeding HV (overpriced premium, good to sell). "
-            "Returns top tickers ranked by premium ratio for a configured monthly expiry or nearby DTE."
+            "Get saved theta research candidates with the dashboard's quality checks. "
+            "Ranks by quality-adjusted IV/HV richness, not dollar premium or executable trade prices."
         ),
         "parameters": {
             "type": "object",
@@ -176,7 +183,7 @@ TOOL_DEFS = [
 
 
 # ---------------------------------------------------------------------------
-# Tool handlers (shared by all providers)
+# Tool handlers
 # ---------------------------------------------------------------------------
 
 def _run_prediction_tool(params: dict) -> dict:
@@ -255,25 +262,17 @@ def _query_database_tool(params: dict) -> dict:
     if not sql.upper().startswith("SELECT"):
         return {"error": "Only SELECT queries are allowed"}
     try:
-        result = get_db().execute(sql).fetchdf()
-        truncated = len(result) > 100
-        if truncated:
-            result = result.head(100)
-        # Convert date/timestamp columns to strings for JSON serialization
-        for col in result.columns:
-            if result[col].dtype.kind in ("M", "m"):  # datetime or timedelta
-                result[col] = result[col].astype(str)
-        # Replace NaN/inf with None for JSON compliance
-        import math
-        rows = result.values.tolist()
-        for row in rows:
-            for j, v in enumerate(row):
-                if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-                    row[j] = None
+        conn = get_db()
+        statements = conn.extract_statements(sql)
+        if len(statements) != 1 or statements[0].type.name != "SELECT":
+            return {"error": "Only a single SELECT query is allowed"}
+        cursor = conn.execute(sql)
+        rows = cursor.fetchmany(101)
+        truncated = len(rows) > 100
         return {
-            "columns": list(result.columns),
-            "rows": rows,
-            "row_count": len(result),
+            "columns": [column[0] for column in cursor.description],
+            "rows": _json_safe(rows[:100]),
+            "row_count": min(len(rows), 100),
             "truncated": truncated,
         }
     except Exception as e:
@@ -341,7 +340,7 @@ def _get_theta_plays_tool(params: dict) -> dict:
 
     expiry = params.get("expiry")
     days_forward = params.get("days_forward")
-    limit = params.get("limit", 10)
+    limit = max(1, min(int(params.get("limit", 10)), 100))
 
     if expiry:
         try:
@@ -359,15 +358,18 @@ def _get_theta_plays_tool(params: dict) -> dict:
         return {"error": "No theta scan results found. Run run_theta_scan.py --config config/app_defaults.json first."}
 
     rows = get_theta_results(scan["scan_id"])
-    sorted_rows = sorted(rows, key=lambda r: r.get("rank_score") or r.get("avg_premium", 0), reverse=True)[:limit]
+    from app.theta_quality import scan_response, timestamp
+    assessed = scan_response(rows, scan)
+    scanned = timestamp(scan.get("created_at"))
     return {
         "scan_id": scan["scan_id"],
         "expiry": scan["expiry"],
         "days_forward": scan.get("days_forward"),
         "hv_days": scan.get("hv_days"),
-        "scanned_at": scan.get("created_at", ""),
+        "scanned_at": scanned.isoformat() if scanned else None,
         "tickers_scanned": scan.get("tickers_scanned", 0),
-        "results": sorted_rows,
+        "quality_counts": assessed["quality_counts"]["highest_premium"],
+        "results": assessed["highest_premium"][:limit],
     }
 
 
@@ -389,237 +391,137 @@ def _execute_tool(name: str, params: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Google Gemini provider
+# Google ADK runtime
 # ---------------------------------------------------------------------------
 
-def _run_chat_google(messages: list[dict]) -> dict:
-    from google import genai
-    from google.genai import types
-
-    client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY", ""))
-
-    # Convert tool defs to Gemini format
-    gemini_tools = []
-    for t in TOOL_DEFS:
-        gemini_tools.append(types.Tool(function_declarations=[
-            types.FunctionDeclaration(
-                name=t["name"],
-                description=t["description"],
-                parameters=t["parameters"],
-            )
-        ]))
-
-    # Build contents from message history
-    contents = []
-    for msg in messages:
-        role = "user" if msg["role"] == "user" else "model"
-        contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg["content"])]))
-
-    tool_results_for_frontend = []
-
-    max_iterations = 15
-    for _ in range(max_iterations):
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                tools=gemini_tools,
-            ),
-        )
-
-        # Check for function calls
-        function_calls = []
-        text_parts = []
-        for part in response.candidates[0].content.parts:
-            if part.function_call:
-                function_calls.append(part)
-            elif part.text:
-                text_parts.append(part.text)
-
-        if function_calls:
-            # Add model response to contents
-            contents.append(response.candidates[0].content)
-
-            # Execute tools and add results
-            function_responses = []
-            for fc_part in function_calls:
-                fc = fc_part.function_call
-                result = _execute_tool(fc.name, dict(fc.args))
-                tool_results_for_frontend.append({
-                    "tool": fc.name,
-                    "input": dict(fc.args),
-                    "output": result,
-                })
-                function_responses.append(
-                    types.Part.from_function_response(
-                        name=fc.name,
-                        response=result,
-                    )
-                )
-
-            contents.append(types.Content(role="user", parts=function_responses))
-        else:
-            # Final text response
-            text = "\n".join(text_parts) if text_parts else ""
-            return {"response": text, "tool_results": tool_results_for_frontend}
-
-    return {"response": "Max tool iterations reached.", "tool_results": tool_results_for_frontend}
+def _json_safe(value):
+    if isinstance(value, np.generic):
+        return _json_safe(value.item())
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
 
 
-# ---------------------------------------------------------------------------
-# Anthropic Claude provider
-# ---------------------------------------------------------------------------
+class DashboardTool(BaseTool):
+    """Expose the existing schemas and handlers to ADK's function-call loop."""
 
-def _run_chat_anthropic(messages: list[dict]) -> dict:
-    import anthropic
+    def __init__(self, definition: dict, results: list, budget: dict):
+        super().__init__(name=definition["name"], description=definition["description"])
+        self.definition = definition
+        self.results = results
+        self.budget = budget
 
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not key:
-        return {"response": "No ANTHROPIC_API_KEY set.", "tool_results": []}
+    def _get_declaration(self):
+        return types.FunctionDeclaration(**self.definition)
 
-    model = os.environ.get("ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL)
-    client = anthropic.Anthropic(api_key=key)
-
-    # Convert tool defs to Anthropic format
-    anthropic_tools = []
-    for t in TOOL_DEFS:
-        anthropic_tools.append({
-            "name": t["name"],
-            "description": t["description"],
-            "input_schema": t["parameters"],
-        })
-
-    claude_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
-    tool_results_for_frontend = []
-
-    def _anthropic_request_id(error: Exception) -> str | None:
-        request_id = getattr(error, "request_id", None)
-        if request_id:
-            return str(request_id)
-        response = getattr(error, "response", None)
-        headers = getattr(response, "headers", None)
-        if headers:
-            return headers.get("request-id") or headers.get("x-request-id")
-        return None
-
-    def _call_anthropic(**kwargs):
-        """Call Anthropic API with retry on transient server/overload errors."""
-        import time as _time
-        delays = [2, 4, 8, 16]
-        for attempt in range(5):
-            try:
-                return client.messages.create(**kwargs)
-            except anthropic.APIStatusError as e:
-                if e.status_code in RETRYABLE_ANTHROPIC_STATUS_CODES and attempt < 4:
-                    delay = delays[attempt]
-                    logger.warning(
-                        "Anthropic %s transient error, retrying in %ds (attempt %d/5, request_id=%s)",
-                        e.status_code,
-                        delay,
-                        attempt + 1,
-                        _anthropic_request_id(e) or "unknown",
-                    )
-                    _time.sleep(delay)
-                    continue
-                raise
-
-    max_iterations = 15
-    for _ in range(max_iterations):
+    async def run_async(self, *, args, tool_context):
+        if self.budget["calls"] >= 20:
+            return {"error": "Tool budget reached. Summarize the results already obtained."}
+        self.budget["calls"] += 1
         try:
-            response = _call_anthropic(
-                model=model,
-                max_tokens=4096,
-                system=SYSTEM_PROMPT,
-                tools=anthropic_tools,
-                messages=claude_messages,
-            )
-        except anthropic.NotFoundError:
-            logger.exception("Anthropic model not found: %s", model)
-            return {
-                "response": (
-                    f"Anthropic model `{model}` was not found. "
-                    "Set `ANTHROPIC_MODEL` to an active Claude API model, "
-                    f"for example `{DEFAULT_ANTHROPIC_MODEL}`."
-                ),
-                "tool_results": tool_results_for_frontend,
-            }
-        except anthropic.APIStatusError as e:
-            request_id = _anthropic_request_id(e)
-            logger.exception(
-                "Anthropic API status error after retries: status=%s request_id=%s",
-                e.status_code,
-                request_id or "unknown",
-            )
-            if e.status_code in RETRYABLE_ANTHROPIC_STATUS_CODES:
-                detail = f" Request id: `{request_id}`." if request_id else ""
-                return {
-                    "response": (
-                        "Anthropic is temporarily overloaded or returning server errors. "
-                        "Please try Dacey again in a minute."
-                        f"{detail}"
-                    ),
-                    "tool_results": tool_results_for_frontend,
-                }
-            return {"response": f"Anthropic returned HTTP {e.status_code}.", "tool_results": tool_results_for_frontend}
+            validate(args, self.definition["parameters"])
 
-        if response.stop_reason == "tool_use":
-            tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
+            def invoke():
+                with isolated_read_db():
+                    return _json_safe(_execute_tool(self.name, args))
 
-            claude_messages.append({"role": "assistant", "content": response.content})
-
-            tool_result_contents = []
-            for tb in tool_use_blocks:
-                result = _execute_tool(tb.name, tb.input)
-                tool_results_for_frontend.append({
-                    "tool": tb.name, "input": tb.input, "output": result,
-                })
-                tool_result_contents.append({
-                    "type": "tool_result",
-                    "tool_use_id": tb.id,
-                    "content": json.dumps(result),
-                })
-
-            claude_messages.append({"role": "user", "content": tool_result_contents})
-        else:
-            text = "".join(b.text for b in response.content if hasattr(b, "text"))
-            return {"response": text, "tool_results": tool_results_for_frontend}
-
-    return {"response": "Max tool iterations reached.", "tool_results": tool_results_for_frontend}
+            result = await asyncio.to_thread(invoke)
+        except ValidationError:
+            result = {"error": "Invalid tool arguments. Check the required fields and types."}
+        except Exception as exc:
+            logger.warning("Chat tool %s failed (%s)", self.name, type(exc).__name__)
+            result = {"error": "The requested calculation or database read failed."}
+        self.results.append({"tool": self.name, "input": args, "output": result})
+        return result
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
-PROVIDERS = {
-    "google": _run_chat_google,
-    "anthropic": _run_chat_anthropic,
-}
-
-DEFAULT_PROVIDER = "google"
+def _system_instruction() -> str:
+    with isolated_read_db():
+        return SYSTEM_PROMPT.format(**_prompt_defaults())
 
 
-def run_chat(
-    messages: list[dict],
-    provider: str | None = None,
-) -> dict:
-    """Run a chat turn with the specified LLM provider.
+def _validate_messages(messages):
+    if not isinstance(messages, list) or not messages or len(messages) > 60:
+        raise ValueError("Provide 1-60 chat messages. Start a new conversation if the history is full.")
+    for message in messages:
+        if (not isinstance(message, dict) or message.get("role") not in ("user", "assistant")
+                or not isinstance(message.get("content"), str) or not message["content"].strip()):
+            raise ValueError("Each message must have a user/assistant role and nonempty text.")
+    if messages[-1]["role"] != "user":
+        raise ValueError("The last message must be from the user.")
+    if sum(len(message["content"]) for message in messages) > 60000:
+        raise ValueError("Conversation is too long. Start a new conversation.")
 
-    Args:
-        messages: conversation history [{role, content}, ...]
-        provider: "google" or "anthropic" (default: "google")
 
-    Returns:
-        {"response": "...", "tool_results": [...]}
-    """
-    provider = provider or DEFAULT_PROVIDER
-    handler = PROVIDERS.get(provider)
-    if not handler:
-        return {"response": f"Unknown provider: {provider}. Use 'google' or 'anthropic'.", "tool_results": []}
+async def _run_adk(messages: list[dict], results: list, model) -> str:
+    session_service = InMemorySessionService()
+    session = await session_service.create_session(app_name="decay_chat", user_id="request", session_id=uuid4().hex)
+    # The browser supplies its history. A fresh, request-scoped ADK session
+    # avoids server affinity and cross-user state on multi-worker deployments.
+    for index, message in enumerate(messages[:-1]):
+        is_user = message["role"] == "user"
+        await session_service.append_event(session=session, event=Event(
+            invocation_id=f"history_{index}", author="user" if is_user else "dacey",
+            content=types.Content(role="user" if is_user else "model",
+                                  parts=[types.Part.from_text(text=message["content"])]),
+        ))
+    budget = {"calls": 0}
+    agent = LlmAgent(
+        name="dacey", model=model,
+        instruction=await asyncio.to_thread(_system_instruction),
+        tools=[DashboardTool(definition, results, budget) for definition in TOOL_DEFS],
+        generate_content_config=types.GenerateContentConfig(max_output_tokens=4096),
+    )
+    async with Runner(agent=agent, app_name="decay_chat", session_service=session_service) as runner:
+        async for event in runner.run_async(
+            user_id="request", session_id=session.id,
+            new_message=types.Content(role="user", parts=[types.Part.from_text(text=messages[-1]["content"])]),
+            run_config=RunConfig(max_llm_calls=15),
+        ):
+            if event.is_final_response() and event.content:
+                text = "\n".join(part.text for part in event.content.parts or []
+                                 if part.text and not part.thought)
+                if text:
+                    return text
+    return "I couldn't complete that request. Try a narrower question."
 
+
+async def run_chat(messages: list[dict]) -> dict:
+    """Run one Gemini ADK turn, preserving the browser's response/tool-results API."""
+    _validate_messages(messages)
+    results = []
+    key = os.environ.get("GOOGLE_API_KEY", "")
+    if not key:
+        return {"response": "Dacey needs GOOGLE_API_KEY to be configured.", "tool_results": []}
+    from google import genai
+
+    client = genai.Client(api_key=key, vertexai=False, http_options=types.HttpOptions(timeout=45000))
     try:
-        return handler(messages)
-    except Exception as e:
-        logger.error("Chat failed (%s): %s", provider, e)
-        return {"response": f"Error ({provider}): {e}", "tool_results": []}
+        model = Gemini(model=os.environ.get("CHAT_MODEL", DEFAULT_CHAT_MODEL), client=client)
+        async with asyncio.timeout(180):
+            text = await _run_adk(messages, results, model)
+    except TimeoutError:
+        text = "Dacey took too long. Please try a narrower question."
+    except Exception as exc:
+        code = getattr(exc, "code", None)
+        logger.error("ADK chat failed (%s, code=%s)", type(exc).__name__, code)
+        if isinstance(exc, errors.APIError) and (code in (401, 403) or "API key not valid" in str(exc.message)):
+            text = "Google rejected Dacey's API key. Update GOOGLE_API_KEY and check its API restrictions."
+        elif code == 402:
+            text = "Gemini requires payment. Check your project's billing and prepaid credits in Google AI Studio."
+        elif code == 429:
+            text = "Gemini quota or rate limit reached. Check Google API billing or try again later."
+        elif code == 404:
+            text = "The configured Gemini model is unavailable. Check CHAT_MODEL."
+        else:
+            text = "Dacey couldn't complete that request. Please try again."
+    finally:
+        await client.aio.aclose()
+        client.close()
+    return {"response": text, "tool_results": results}
